@@ -2,6 +2,16 @@
 
 A declarative orchestration framework for AI-powered business workflows. Think of it as "Kubernetes for business logic" where agents are the pods and departments are the deployments.
 
+## 🚀 Team Setup
+
+**New team member?** See the complete setup guide: **[TEAM_SETUP.md](TEAM_SETUP.md)**
+
+This includes:
+- Database setup (PostgreSQL + Docker)
+- Local development environment
+- Testing instructions
+- Troubleshooting guide
+
 ## Quick Start
 
 ```python
@@ -57,11 +67,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 │   ├── accounts_payable.py         # Local example
 │   ├── invoice_processing.py       # Simple workflow
 │   └── propane_delivery.py         # Domain example
-```
-
-├── config.py               # LLM API keys & settings
-├── local/dependencies/     # Fallback data & schemas
-├── invoices/              # Test documents
-├── temp_processing/       # PDF processing workspace
-└── tests/                 # Test suite
+├── memra/                  # Core SDK
+├── logic/                  # Tool implementations  
+├── local/dependencies/     # Database setup & schemas
+└── docker-compose.yml      # Database setup
 ```
