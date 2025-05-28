@@ -2,18 +2,21 @@
 include README.md
 include LICENSE
 include CHANGELOG.md
+include requirements.txt
+include examples/*.py
+include docs/*.md
+include docs/*.sql
+include mcp_bridge_server.py
 recursive-include memra *.py
 
 # Explicitly exclude server-only files and directories
 exclude app.py
 exclude server_tool_registry.py
-exclude mcp_bridge_server.py
 exclude config.py
 exclude fly.toml
 exclude Dockerfile
 exclude Procfile
 exclude docker-compose.yml
-exclude requirements.txt
 recursive-exclude logic *
 recursive-exclude scripts *
 recursive-exclude docs *

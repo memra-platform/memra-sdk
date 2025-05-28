@@ -9,7 +9,7 @@ import sys
 import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from memra import Agent, Department, LLM
+from memra import Agent, Department
 from memra.execution import ExecutionEngine
 
 # Set up environment
@@ -20,43 +20,10 @@ os.environ['MEMRA_API_KEY'] = 'memra-prod-2024-001'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# LLM configurations
-AGENT_LLM_CONFIG = {
-    "parsing": {
-        "model": "microsoft/DialoGPT-medium",
-        "temperature": 0.1,
-        "max_tokens": 2000
-    },
-    "manager": {
-        "model": "microsoft/DialoGPT-medium", 
-        "temperature": 0.0,
-        "max_tokens": 1000
-    }
-}
-
-default_llm = LLM(
-    model=AGENT_LLM_CONFIG["parsing"]["model"],
-    temperature=AGENT_LLM_CONFIG["parsing"]["temperature"],
-    max_tokens=AGENT_LLM_CONFIG["parsing"]["max_tokens"]
-)
-
-parsing_llm = LLM(
-    model=AGENT_LLM_CONFIG["parsing"]["model"],
-    temperature=AGENT_LLM_CONFIG["parsing"]["temperature"],
-    max_tokens=AGENT_LLM_CONFIG["parsing"]["max_tokens"]
-)
-
-manager_llm = LLM(
-    model=AGENT_LLM_CONFIG["manager"]["model"],
-    temperature=AGENT_LLM_CONFIG["manager"]["temperature"],
-    max_tokens=AGENT_LLM_CONFIG["manager"]["max_tokens"]
-)
-
 # Define the agents - using MCP for database operations
 etl_agent = Agent(
     role="Data Engineer",
     job="Extract invoice schema from Postgres database",
-    llm=default_llm,
     sops=[
         "Connect to PostgresDB using credentials",
         "Query information_schema for invoices table",
@@ -73,7 +40,6 @@ etl_agent = Agent(
 parser_agent = Agent(
     role="Invoice Parser",
     job="Extract structured data from invoice PDF using schema",
-    llm=parsing_llm,
     sops=[
         "Load invoice PDF file",
         "Convert to high-contrast images if needed",
@@ -96,7 +62,6 @@ parser_agent = Agent(
 writer_agent = Agent(
     role="Data Entry Specialist",
     job="Write validated invoice data to Postgres database via MCP",
-    llm=default_llm,
     sops=[
         "Validate invoice data completeness",
         "Map fields to database columns using schema",
@@ -110,7 +75,7 @@ writer_agent = Agent(
             "name": "DataValidator", 
             "hosted_by": "mcp",
             "config": {
-                "bridge_url": "https://c210-2607-f598-ba9a-99-93d-4606-5e29-a28d.ngrok-free.app",
+                "bridge_url": "http://localhost:8081",
                 "bridge_secret": "test-secret-for-development"
             }
         },
@@ -118,7 +83,7 @@ writer_agent = Agent(
             "name": "PostgresInsert", 
             "hosted_by": "mcp",
             "config": {
-                "bridge_url": "https://c210-2607-f598-ba9a-99-93d-4606-5e29-a28d.ngrok-free.app",
+                "bridge_url": "http://localhost:8081",
                 "bridge_secret": "test-secret-for-development"
             }
         }
@@ -131,7 +96,6 @@ writer_agent = Agent(
 manager_agent = Agent(
     role="Accounts Payable Manager",
     job="Coordinate invoice processing pipeline and handle exceptions",
-    llm=manager_llm,
     sops=[
         "Check if schema extraction succeeded",
         "Validate parsed invoice has required fields",

@@ -12,6 +12,7 @@ class Tool(BaseModel):
     hosted_by: str = "memra"  # or "mcp" for customer's Model Context Protocol
     description: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None
 
 class Agent(BaseModel):
     role: str

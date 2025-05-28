@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from .models import Department, Agent, DepartmentResult, ExecutionTrace, DepartmentAudit
 from .tool_registry import ToolRegistry
+from .tool_registry_client import ToolRegistryClient
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,7 @@ class ExecutionEngine:
     
     def __init__(self):
         self.tool_registry = ToolRegistry()
+        self.api_client = ToolRegistryClient()
         self.last_execution_audit: Optional[DepartmentAudit] = None
     
     def execute_department(self, department: Department, input_data: Dict[str, Any]) -> DepartmentResult:
@@ -199,12 +201,28 @@ class ExecutionEngine:
                 trace.tools_invoked.append(tool_name)
                 
                 # Get tool from registry and execute
-                tool_result = self.tool_registry.execute_tool(
-                    tool_name, 
-                    hosted_by, 
-                    agent_input,
-                    agent.config
-                )
+                print(f"🔍 {agent.role}: Tool {tool_name} is hosted by: {hosted_by}")
+                if hosted_by == "memra":
+                    # Use API client for server-hosted tools
+                    print(f"🌐 {agent.role}: Using API client for {tool_name}")
+                    config_to_pass = tool_spec.get("config") if isinstance(tool_spec, dict) else tool_spec.config
+                    tool_result = self.api_client.execute_tool(
+                        tool_name, 
+                        hosted_by, 
+                        agent_input,
+                        config_to_pass
+                    )
+                else:
+                    # Use local registry for MCP and other local tools
+                    print(f"🏠 {agent.role}: Using local registry for {tool_name}")
+                    config_to_pass = tool_spec.get("config") if isinstance(tool_spec, dict) else tool_spec.config
+                    print(f"🔧 {agent.role}: Config for {tool_name}: {config_to_pass}")
+                    tool_result = self.tool_registry.execute_tool(
+                        tool_name, 
+                        hosted_by, 
+                        agent_input,
+                        config_to_pass
+                    )
                 
                 if not tool_result.get("success", False):
                     print(f"😟 {agent.role}: Oh no! Tool {tool_name} failed: {tool_result.get('error', 'Unknown error')}")
@@ -292,7 +310,8 @@ class ExecutionEngine:
                 isinstance(tool_data["validation_errors"], list) and
                 "is_valid" in tool_data and
                 # Check if it's validating real extracted data (not just mock data)
-                len(str(tool_data)) > 100  # Real validation results are more substantial
+                len(str(tool_data)) > 100 and  # Real validation results are more substantial
+                not tool_data.get("_mock", False)  # Not mock data
             )
         
         elif tool_name == "PostgresInsert":
@@ -302,7 +321,8 @@ class ExecutionEngine:
                 tool_data["success"] == True and
                 "record_id" in tool_data and
                 isinstance(tool_data["record_id"], int) and  # Real DB returns integer IDs
-                "database_table" in tool_data  # Real implementation includes table name
+                "database_table" in tool_data and  # Real implementation includes table name
+                not tool_data.get("_mock", False)  # Not mock data
             )
         
         # Default to mock work

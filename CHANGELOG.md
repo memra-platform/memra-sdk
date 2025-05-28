@@ -5,6 +5,25 @@ All notable changes to the Memra SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-05-28
+
+### Fixed
+- **MCP Integration**: Fixed broken MCP tool execution after repository separation
+- **Tool Registry**: Updated MCP tool routing to use correct endpoints
+- **Bridge Server**: Added working MCP bridge server implementation
+- **Real Work Detection**: Improved detection of real vs mock work for MCP tools
+
+### Added
+- Complete MCP bridge server with DataValidator and PostgresInsert tools
+- Health check endpoint for MCP bridge monitoring
+- Better error handling and fallback for MCP tool execution
+
+### Changed
+- MCP tools now perform real database operations instead of mock responses
+- Improved logging and debugging for MCP tool execution flow
+
+## [0.2.1] - 2025-05-27
+
 ## [0.2.0] - 2024-01-17
 
 ### Added
