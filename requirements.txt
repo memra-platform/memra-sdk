@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+requests
+httpx
+psycopg2-binary
+huggingface_hub
+Pillow
+

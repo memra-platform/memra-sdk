@@ -1,3 +1,46 @@
+# Build artifacts
+dist/
+build/
+*.egg-info/
 __pycache__/
-.env
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
 venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.log
+
+# Local configuration (if any)
+.env
+config_local.py
+config.py
+
+# API keys and credentials
+*.key
+*.pem
+
+# Invoice files and sensitive documents
+invoices/
+temp_processing/
