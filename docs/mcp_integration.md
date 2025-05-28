@@ -170,7 +170,14 @@ Update your agent configs with the ngrok URL:
 ```
 
 ### 3. Database Setup
-Ensure your database schema matches expected fields:
+Ensure your database schema matches expected fields. You can use the provided schema file:
+
+```bash
+# Run the schema setup script
+psql -d memra_invoice_db -f docs/database_schema.sql
+```
+
+Or create the schema manually:
 
 ```sql
 CREATE TABLE invoices (
@@ -178,14 +185,28 @@ CREATE TABLE invoices (
     invoice_number VARCHAR(50) NOT NULL,
     vendor_name VARCHAR(255) NOT NULL,
     invoice_date DATE NOT NULL,
-    total_amount DECIMAL(10,2) NOT NULL,
+    due_date DATE,
+    total_amount DECIMAL(10,2) NOT NULL CHECK (total_amount > 0),
     tax_amount DECIMAL(10,2),
     line_items JSONB,
-    status VARCHAR(20) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_invoice_date ON invoices(invoice_date);
+CREATE INDEX IF NOT EXISTS idx_vendor_name ON invoices(vendor_name);
+CREATE INDEX IF NOT EXISTS idx_status ON invoices(status);
 ```
+
+**Important Notes:**
+- The `invoice_number` field allows duplicates (no UNIQUE constraint)
+- The `line_items` field stores JSON data with invoice line item details
+- The `total_amount` field has a CHECK constraint requiring positive values
+- Timestamps are automatically managed with triggers
+
+**Complete Schema:** See `docs/database_schema.sql` for the full schema including triggers and detailed field descriptions.
 
 ## Troubleshooting
 
