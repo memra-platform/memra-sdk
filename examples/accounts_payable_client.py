@@ -152,7 +152,7 @@ print("📡 Tools will execute on Memra API server")
 
 engine = ExecutionEngine()
 input_data = {
-    "file": "invoices/10352259310.PDF",
+    "file": "path/to/your/invoice.pdf",  # Update this path to your invoice file
     "connection": "postgresql://tarpus@localhost:5432/memra_invoice_db"
 }
 

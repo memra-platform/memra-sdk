@@ -135,7 +135,7 @@ def main():
     
     # Execute the department
     input_data = {
-        "file": "invoices/10352259310.PDF",
+        "file": "path/to/your/invoice.pdf",  # Update this path to your invoice file
         "connection": "postgresql://tarpus@localhost:5432/memra_invoice_db"
     }
 
