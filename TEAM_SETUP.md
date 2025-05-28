@@ -57,9 +57,21 @@ Edit `examples/accounts_payable.py` line 147:
 "connection": "postgresql://your_username@localhost:5432/memra_invoice_db"  # Local PostgreSQL
 ```
 
-## 🧪 Test the Database Setup
+### 5. Get API Key from Team Lead
 
-### Test Database Connection
+Contact your team lead for a Memra API key, then set it:
+
+```bash
+# Set environment variable (required for API access)
+export MEMRA_API_KEY="your-api-key-from-team-lead"
+
+# Optional: Add to shell profile for persistence
+echo 'export MEMRA_API_KEY="your-api-key-from-team-lead"' >> ~/.zshrc
+```
+
+## 🧪 Test the Setup
+
+### 1. Test Database Connection
 
 ```bash
 # Docker
@@ -71,7 +83,19 @@ psql memra_invoice_db -c "SELECT COUNT(*) FROM invoices;"
 
 Should return: `count: 2` (sample records)
 
-### View Sample Data
+### 2. Test API Access
+
+```bash
+# Test that your API key works
+python examples/accounts_payable_client.py
+```
+
+Expected output:
+- ✅ API Health check passes
+- 🚀 Workflow starts successfully
+- 📡 Tools execute remotely on Memra API
+
+### 3. View Sample Data
 
 ```bash
 # Connect to database

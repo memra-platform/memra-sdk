@@ -43,6 +43,27 @@ result = dept.run({"input_data": {...}})
 pip install memra
 ```
 
+## API Access
+
+Memra requires an API key to execute workflows on the hosted infrastructure.
+
+### Get Your API Key
+Contact [info@memra.co](mailto:info@memra.co) for API access.
+
+### Set Your API Key
+```bash
+# Set environment variable
+export MEMRA_API_KEY="your-api-key-here"
+
+# Or add to your shell profile for persistence
+echo 'export MEMRA_API_KEY="your-api-key-here"' >> ~/.zshrc
+```
+
+### Test Your Setup
+```bash
+python examples/accounts_payable_client.py
+```
+
 ## Documentation
 
 Documentation is coming soon. For now, see the examples below and in the `examples/` directory.
