@@ -6,10 +6,20 @@ This version calls the Memra API hosted on Fly.io instead of running tools local
 import os
 from memra import Agent, Department, LLM, check_api_health, get_api_status
 from memra.execution import ExecutionEngine
+import sys
+
+# Check for required API key
+if not os.getenv("MEMRA_API_KEY"):
+    print("❌ Error: MEMRA_API_KEY environment variable is required")
+    print("Please set your API key: export MEMRA_API_KEY='your-key-here'")
+    print("Contact info@memra.co for API access")
+    sys.exit(1)
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import DEFAULT_LLM_CONFIG, AGENT_LLM_CONFIG
 
 # Set API configuration
 os.environ["MEMRA_API_URL"] = "https://api.memra.co"  # Use production API
-os.environ["MEMRA_API_KEY"] = "dev-key"
 
 # Check API health before starting
 print("🔍 Checking Memra API status...")

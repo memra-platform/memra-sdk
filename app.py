@@ -37,18 +37,27 @@ class ToolDiscoveryResponse(BaseModel):
     tools: List[Dict[str, str]]
 
 # Authentication
-async def verify_api_key(x_api_key: Optional[str] = Header(None)):
-    """Verify API key against hardcoded list of valid keys"""
-    # Get valid keys from environment variable or use defaults
-    valid_keys = os.getenv("MEMRA_API_KEYS", "dev-key,demo-key,early-access-001,early-access-002").split(",")
+def verify_api_key(api_key: str) -> bool:
+    """Verify if the provided API key is valid"""
+    # Get valid keys from environment variable only - no defaults
+    valid_keys_str = os.getenv("MEMRA_API_KEYS")
+    if not valid_keys_str:
+        # If no keys are set, deny all access
+        return False
     
+    valid_keys = valid_keys_str.split(",")
+    return api_key.strip() in [key.strip() for key in valid_keys]
+
+# FastAPI dependency for API key verification
+async def get_api_key(x_api_key: Optional[str] = Header(None)):
+    """FastAPI dependency to verify API key from header"""
     if not x_api_key:
         raise HTTPException(
             status_code=401, 
             detail="Missing API key. Please provide X-API-Key header."
         )
     
-    if x_api_key not in valid_keys:
+    if not verify_api_key(x_api_key):
         raise HTTPException(
             status_code=401, 
             detail="Invalid API key. Please contact info@memra.co for access."
@@ -647,7 +656,7 @@ async def health_check():
 @app.post("/tools/execute", response_model=ToolExecutionResponse)
 async def execute_tool(
     request: ToolExecutionRequest,
-    api_key: Optional[str] = Depends(verify_api_key)
+    api_key: Optional[str] = Depends(get_api_key)
 ):
     """Execute a tool with the given input data"""
     try:
@@ -679,7 +688,7 @@ async def execute_tool(
         )
 
 @app.get("/tools/discover", response_model=ToolDiscoveryResponse)
-async def discover_tools(api_key: Optional[str] = Depends(verify_api_key)):
+async def discover_tools(api_key: Optional[str] = Depends(get_api_key)):
     """Discover available tools"""
     try:
         from memra.tool_registry import ToolRegistry
