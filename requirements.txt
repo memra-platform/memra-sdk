@@ -6,4 +6,6 @@ httpx
 psycopg2-binary
 huggingface_hub
 Pillow
+aiohttp>=3.8.0
+aiohttp-cors>=0.7.0
 
