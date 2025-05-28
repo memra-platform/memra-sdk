@@ -64,6 +64,16 @@ echo 'export MEMRA_API_KEY="your-api-key-here"' >> ~/.zshrc
 python examples/accounts_payable_client.py
 ```
 
+## Architecture
+
+The Memra platform consists of three main components:
+
+- **Memra SDK** (this repository): Client library for building and executing workflows
+- **Memra Server**: Hosted infrastructure for heavy AI processing tools
+- **MCP Bridge**: Local execution environment for database operations
+
+Tools are automatically routed between server and local execution based on their `hosted_by` configuration.
+
 ## Documentation
 
 Documentation is coming soon. For now, see the examples below and in the `examples/` directory.
@@ -80,16 +90,24 @@ We welcome contributions! Please see our [contributing guide](CONTRIBUTING.md) f
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Examples
+## Repository Structure
 
 ```
-├── examples/
-│   ├── accounts_payable_client.py  # API-based example
-│   ├── accounts_payable.py         # Local example
-│   ├── invoice_processing.py       # Simple workflow
-│   └── propane_delivery.py         # Domain example
-├── memra/                  # Core SDK
-├── logic/                  # Tool implementations  
-├── local/dependencies/     # Database setup & schemas
-└── docker-compose.yml      # Database setup
+├── examples/                       # Example workflows and use cases
+│   ├── accounts_payable_client.py  # API-based accounts payable workflow
+│   ├── accounts_payable_mcp.py     # MCP-enabled accounts payable workflow
+│   ├── invoice_processing.py       # Simple invoice processing example
+│   └── propane_delivery.py         # Propane delivery domain example
+├── memra/                          # Core SDK package
+│   ├── __init__.py                 # Package initialization
+│   ├── tool_registry.py            # Tool discovery and routing
+│   └── sdk/                        # SDK components
+│       ├── __init__.py
+│       ├── client.py               # API client
+│       ├── execution_engine.py     # Workflow execution
+│       └── models.py               # Core data models
+├── docs/                           # Documentation
+├── tests/                          # Test suite
+├── local/dependencies/             # Local development setup
+└── scripts/                        # Utility scripts
 ```
