@@ -1,0 +1,29 @@
+# Include only the client SDK files
+include README.md
+include LICENSE
+include CHANGELOG.md
+recursive-include memra *.py
+
+# Explicitly exclude server-only files and directories
+exclude app.py
+exclude server_tool_registry.py
+exclude mcp_bridge_server.py
+exclude config.py
+exclude fly.toml
+exclude Dockerfile
+exclude Procfile
+exclude docker-compose.yml
+exclude requirements.txt
+recursive-exclude logic *
+recursive-exclude scripts *
+recursive-exclude docs *
+recursive-exclude examples *
+recursive-exclude tests *
+recursive-exclude temp_processing *
+recursive-exclude invoices *
+recursive-exclude local *
+recursive-exclude dist *
+recursive-exclude __pycache__ *
+recursive-exclude *.egg-info *
+exclude .DS_Store
+exclude .dockerignore 

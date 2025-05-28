@@ -5,10 +5,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="memra",
-    version="0.1.0",
+    version="0.2.1",
     author="Memra",
     author_email="support@memra.com",
-    description="Declarative framework for enterprise workflows - Client SDK",
+    description="Declarative framework for enterprise workflows with MCP integration - Client SDK",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/memra/memra-sdk",
@@ -29,6 +29,8 @@ setup(
         "pydantic>=1.8.0",
         "httpx>=0.24.0",
         "typing-extensions>=4.0.0",
+        "aiohttp>=3.8.0",
+        "aiohttp-cors>=0.7.0",
     ],
     extras_require={
         "dev": [
@@ -36,6 +38,9 @@ setup(
             "pytest-asyncio",
             "black",
             "flake8",
+        ],
+        "mcp": [
+            "psycopg2-binary>=2.9.0",
         ],
     },
     entry_points={

@@ -1,28 +1,27 @@
 """
-Memra SDK - A declarative orchestration framework for AI-powered business workflows
+Memra SDK - Declarative AI Workflows
+
+A framework for building AI-powered business workflows using a declarative approach.
+Think of it as "Kubernetes for business logic" where agents are the pods and 
+departments are the deployments.
 """
 
-from .models import (
-    Agent, 
-    Department, 
-    LLM, 
-    Tool, 
-    ExecutionPolicy, 
-    ExecutionTrace, 
-    DepartmentResult, 
-    DepartmentAudit
-)
-from .discovery_client import discover_tools, check_api_health, get_api_status
+__version__ = "0.2.1"
 
-__version__ = "0.1.0"
+# Core imports
+from .models import Agent, Department, Tool
+from .execution import ExecutionEngine
+
+# Make key classes available at package level
 __all__ = [
-    "Agent", 
+    "Agent",
     "Department", 
-    "LLM", 
-    "Tool", 
-    "ExecutionPolicy", 
-    "ExecutionTrace", 
-    "DepartmentResult", 
-    "DepartmentAudit",
-    "discover_tools"
-] 
+    "Tool",
+    "ExecutionEngine",
+    "__version__"
+]
+
+# Optional: Add version check for compatibility
+import sys
+if sys.version_info < (3, 8):
+    raise RuntimeError("Memra requires Python 3.8 or higher") 
