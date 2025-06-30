@@ -368,6 +368,16 @@ class ExecutionEngine:
                 not tool_data.get("_mock", False)  # Not mock data
             )
         
+        elif tool_name == "SQLExecutor":
+            # Real work if it actually executed SQL and returned real results
+            return (
+                "query" in tool_data and
+                "results" in tool_data and
+                isinstance(tool_data["results"], list) and
+                "row_count" in tool_data and
+                not tool_data.get("_mock", False)  # Not mock data
+            )
+        
         # Default to mock work
         return False
     
