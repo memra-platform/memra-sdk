@@ -339,7 +339,7 @@ Brief description of changes
 ### Contact
 - **Technical Issues**: Create a GitHub issue
 - **General Questions**: Use GitHub Discussions
-- **Security Issues**: Email security@memra.co
+- **Security Issues**: Email hello@memra.co
 
 ## 📋 Code of Conduct
 
