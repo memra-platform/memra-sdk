@@ -8,6 +8,10 @@ The core Memra framework for building AI-powered business workflows.
 pip install memra
 ```
 
+## 🚀 Quick Start (5 minutes!)
+
+**Want to see Memra in action immediately?** Check out our [Quick Start Guide](QUICK_START.md) to run the ETL demo in minutes!
+
 ## Quick Start
 
 ```python
