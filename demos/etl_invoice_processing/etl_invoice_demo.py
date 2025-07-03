@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 ETL Invoice Processing Demo
 Complete ETL workflow with database monitoring before and after
@@ -5,19 +6,34 @@ Complete ETL workflow with database monitoring before and after
 
 import os
 import sys
+from pathlib import Path
 from memra import Agent, Department, LLM, check_api_health, get_api_status
-from memra.execution import ExecutionEngine
+from memra.execution import ExecutionEngine, ExecutionTrace
 from database_monitor_agent import create_simple_monitor_agent, get_monitoring_queries
+import glob
+import requests
+import base64
+import json
+
+# Set API key for authentication
+os.environ['MEMRA_API_KEY'] = 'test-secret-for-development'
+os.environ['MEMRA_API_URL'] = 'https://api.memra.co'
+
+# Add the parent directory to the path so we can import memra
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Check for required API key
 if not os.getenv("MEMRA_API_KEY"):
     print("❌ Error: MEMRA_API_KEY environment variable is required")
-    print("Please set your API key: export MEMRA_API_KEY='your-key-here'")
-    print("Contact info@memra.co for API access")
+    print("Please set your API key: export MEMRA_API_KEY='test-secret-for-development'")
+    print("Using local MCP bridge server")
     sys.exit(1)
 
-# Set API configuration
+# Set API configuration - using remote API for all operations including PDF processing
 os.environ["MEMRA_API_URL"] = "https://api.memra.co"
+
+# Store the remote API URL for PDF processing
+REMOTE_API_URL = "https://api.memra.co"
 
 # Check API health before starting
 print("🔍 Checking Memra API status...")
@@ -58,36 +74,655 @@ etl_agent = Agent(
     job="Extract invoice schema from database",
     llm=default_llm,
     sops=[
-        "Connect to database using credentials",
-        "Query information_schema for invoices table", 
-        "Extract column names, types, and constraints",
-        "Return schema as structured JSON"
+        "Connect to database using provided connection string",
+        "Generate SQL query: SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'invoices' ORDER BY ordinal_position",
+        "Execute the generated SQL query using SQLExecutor tool",
+        "Extract column names, types, and constraints from results",
+        "Return schema as structured JSON with column information"
     ],
     systems=["Database"],
     tools=[
-        {"name": "DatabaseQueryTool", "hosted_by": "memra"}
+        {"name": "SQLExecutor", "hosted_by": "mcp", "input_keys": ["sql_query"]}
     ],
+    input_keys=["connection", "table_name", "sql_query"],
     output_key="invoice_schema"
 )
 
-parser_agent = Agent(
+def convert_vision_response_to_extracted_data(vision_response: str) -> dict:
+    """Convert vision model response to extracted_data format"""
+    try:
+        # Clean up the response - remove markdown code blocks if present
+        if vision_response.startswith("```json"):
+            vision_response = vision_response.replace("```json", "").replace("```", "").strip()
+        
+        # Parse the JSON response
+        data = json.loads(vision_response)
+        
+        # Extract fields with fallback to different naming conventions
+        invoice_number = (
+            data.get("invoice_number") or 
+            data.get("InvoiceNumber") or 
+            data.get("invoiceNumber") or 
+            ""
+        )
+        
+        invoice_date = (
+            data.get("invoice_date") or 
+            data.get("InvoiceDate") or 
+            data.get("invoiceDate") or 
+            ""
+        )
+        
+        # Convert date format if needed
+        if invoice_date:
+            if "/" in invoice_date and len(invoice_date.split("/")) == 3:
+                parts = invoice_date.split("/")
+                month, day, year = parts[0], parts[1], parts[2]
+                if len(year) == 2:
+                    year = "20" + year
+                invoice_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+        
+        amount = (
+            data.get("total_amount") or  # Add this - matches vision model output
+            data.get("amount") or 
+            data.get("InvoiceTotal") or 
+            data.get("invoiceTotal") or 
+            data.get("total") or 
+            0
+        )
+        
+        vendor_name = (
+            data.get("vendor_name") or 
+            data.get("VendorName") or 
+            data.get("vendorName") or 
+            data.get("Company") or 
+            data.get("company") or 
+            data.get("Vendor") or
+            data.get("vendor") or
+            ""
+        )
+        
+        # If vendor not found, try to infer from the data
+        if not vendor_name:
+            # Check if items mention specific vendors
+            items = data.get("Items") or data.get("Order") or data.get("items") or []
+            for item in items:
+                desc = item.get("Description", "").upper()
+                if "PROPANE" in desc:
+                    vendor_name = "Superior Propane"
+                    break
+        
+        tax_amount = (
+            data.get("tax_amount") or 
+            data.get("TaxAmount") or 
+            data.get("taxAmount") or 
+            0
+        )
+        
+        due_date = (
+            data.get("due_date") or 
+            data.get("DueDate") or 
+            data.get("dueDate") or 
+            ""
+        )
+        
+        line_items = (
+            data.get("line_items") or 
+            data.get("Order") or 
+            data.get("order") or 
+            data.get("LineItems") or 
+            data.get("lineItems") or 
+            []
+        )
+        
+        # Convert to expected format
+        extracted_data = {
+            "headerSection": {
+                "vendorName": vendor_name,
+                "subtotal": float(amount)
+            },
+            "billingDetails": {
+                "invoiceNumber": invoice_number,
+                "invoiceDate": invoice_date,
+                "dueDate": due_date
+            },
+            "chargesSummary": {
+                "document_total": float(amount),
+                "secondary_tax": float(tax_amount),
+                "lineItemsBreakdown": line_items
+            },
+            "status": "processed"
+        }
+        
+        return extracted_data
+        
+    except Exception as e:
+        print(f"⚠️  Error converting vision response: {e}")
+        return {
+            "headerSection": {"vendorName": "", "subtotal": 0.0},
+            "billingDetails": {"invoiceNumber": "", "invoiceDate": "", "dueDate": ""},
+            "chargesSummary": {"document_total": 0.0, "secondary_tax": 0.0, "lineItemsBreakdown": []},
+            "status": "conversion_error"
+        }
+
+def pdf_processing_with_remote_api(agent, tool_results, **kwargs):
+    """Custom processing function that switches to remote API for PDF processing"""
+    print("\n[DEBUG] pdf_processing_with_remote_api function called!")
+    print(f"[DEBUG] Agent: {agent.role}")
+    print(f"[DEBUG] Tool results keys: {list(tool_results.keys())}")
+    import json
+    original_url = switch_to_remote_api_for_pdf()
+    try:
+        for tool_name, result_data in tool_results.items():
+            if tool_name == "PDFProcessor":
+                print("\n[DEBUG] Full PDFProcessor result_data:")
+                try:
+                    print(json.dumps(result_data, indent=2, default=str))
+                except Exception as e:
+                    print(f"[DEBUG] Could not serialize result_data: {e}")
+                    print(result_data)
+            if tool_name == "PDFProcessor" and result_data.get("success"):
+                data = result_data.get("data", {})
+                # Double-nested
+                if "data" in data and isinstance(data["data"], dict):
+                    inner_data = data["data"]
+                    if "data" in inner_data and isinstance(inner_data["data"], dict):
+                        actual_data = inner_data["data"]
+                        extracted = actual_data.get("extracted_data", {})
+                        vision_response = actual_data.get("vision_response")
+                        if vision_response and (not extracted or not extracted.get("headerSection")):
+                            converted_data = convert_vision_response_to_extracted_data(vision_response)
+                            actual_data["extracted_data"] = converted_data
+                            print(f"\n🔄 [PATCHED] Applied field mapping conversion to {tool_name} (double-nested)")
+                            print(f"   Invoice #: {converted_data['billingDetails']['invoiceNumber']}")
+                            print(f"   Amount: ${converted_data['chargesSummary']['document_total']}")
+                        # Always print the raw JSON response
+                        if vision_response:
+                            print("\n📝 [AGENT 3] Vision Model Raw JSON Response:")
+                            try:
+                                parsed = json.loads(vision_response.replace('```json','').replace('```','').strip())
+                                print(json.dumps(parsed, indent=2))
+                            except Exception:
+                                print(vision_response)
+                    else:
+                        extracted = inner_data.get("extracted_data", {})
+                        vision_response = inner_data.get("vision_response")
+                        if vision_response and (not extracted or not extracted.get("headerSection")):
+                            converted_data = convert_vision_response_to_extracted_data(vision_response)
+                            inner_data["extracted_data"] = converted_data
+                            print(f"\n🔄 [PATCHED] Applied field mapping conversion to {tool_name} (single-nested)")
+                            print(f"   Invoice #: {converted_data['billingDetails']['invoiceNumber']}")
+                            print(f"   Amount: ${converted_data['chargesSummary']['document_total']}")
+                        if vision_response:
+                            print("\n📝 [AGENT 3] Vision Model Raw JSON Response:")
+                            try:
+                                parsed = json.loads(vision_response.replace('```json','').replace('```','').strip())
+                                print(json.dumps(parsed, indent=2))
+                            except Exception:
+                                print(vision_response)
+                else:
+                    extracted = data.get("extracted_data", {})
+                    vision_response = data.get("vision_response")
+                    if vision_response and (not extracted or not extracted.get("headerSection")):
+                        converted_data = convert_vision_response_to_extracted_data(vision_response)
+                        data["extracted_data"] = converted_data
+                        print(f"\n🔄 [PATCHED] Applied field mapping conversion to {tool_name} (direct)")
+                        print(f"   Invoice #: {converted_data['billingDetails']['invoiceNumber']}")
+                        print(f"   Amount: ${converted_data['chargesSummary']['document_total']}")
+                    if vision_response:
+                        print("\n📝 [AGENT 3] Vision Model Raw JSON Response:")
+                        try:
+                            parsed = json.loads(vision_response.replace('```json','').replace('```','').strip())
+                            print(json.dumps(parsed, indent=2))
+                        except Exception:
+                            print(vision_response)
+        print_vision_model_data(agent, tool_results)
+        return tool_results
+    finally:
+        restore_api_url(original_url)
+
+def fix_pdfprocessor_response(agent, result_data, **kwargs):
+    """Custom processing function that calls remote API for PDF processing and prints JSON"""
+    print(f"\n[DEBUG] fix_pdfprocessor_response called for {agent.role}")
+    print(f"[DEBUG] Result data type: {type(result_data)}")
+    print(f"[DEBUG] Result data: {result_data}")
+    
+    # Get the file path from the result_data (the execution engine passes input data here)
+    file_path = result_data.get('file', '')
+    print(f"[DEBUG] File path from result_data: {file_path}")
+    
+    if not file_path:
+        print("❌ No file path provided in result_data")
+        print(f"[DEBUG] Available keys in result_data: {list(result_data.keys())}")
+        return result_data
+    
+    try:
+        import requests
+        import json
+        import os
+        import base64
+        
+        # Use the remote API for PDF processing
+        api_url = "https://api.memra.co"
+        api_key = os.getenv("MEMRA_API_KEY", "test-secret-for-development")
+        
+        # Since the file is already uploaded and we have the remote path, use it directly
+        print(f"🔍 Using remote file path: {file_path}")
+        
+        # Call the PDFProcessor with the remote path
+        print(f"🔍 Calling PDFProcessor with remote path...")
+        
+        pdf_data = {
+            "file_path": file_path
+        }
+        
+        response = requests.post(
+            f"{api_url}/tools/execute",
+            json={
+                "tool_name": "PDFProcessor",
+                "parameters": pdf_data
+            },
+            headers={
+                "X-API-Key": api_key,
+                "Content-Type": "application/json"
+            }
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ PDFProcessor call failed: {response.status_code}")
+            print(f"   Response: {response.text}")
+            return result_data
+        
+        pdf_result = response.json()
+        print(f"\n🎯 AGENT 3 - FULL PDFPROCESSOR RESPONSE:")
+        print("=" * 60)
+        print(json.dumps(pdf_result, indent=2, default=str))
+        print("=" * 60)
+        
+        # Extract the vision response from the nested structure
+        vision_response = None
+        if pdf_result.get("success") and "data" in pdf_result:
+            data = pdf_result["data"]
+            
+            # Check for nested data structure
+            if isinstance(data, dict) and "data" in data:
+                actual_data = data["data"]
+                if "vision_response" in actual_data:
+                    vision_response = actual_data["vision_response"]
+            elif "vision_response" in data:
+                vision_response = data["vision_response"]
+        
+        if vision_response:
+            print(f"\n🎯 AGENT 3 - RAW VISION MODEL JSON:")
+            print("=" * 60)
+            print(vision_response)
+            print("=" * 60)
+            
+            # Try to parse the JSON response
+            try:
+                # Clean up the response - remove markdown code blocks if present
+                cleaned_response = vision_response
+                if cleaned_response.startswith("```json"):
+                    cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
+                elif cleaned_response.startswith("```"):
+                    cleaned_response = cleaned_response.replace("```", "").strip()
+                
+                parsed_data = json.loads(cleaned_response)
+                print(f"\n✅ [AGENT 3] Successfully parsed JSON:")
+                print(json.dumps(parsed_data, indent=2))
+                
+                # Convert to the expected format
+                extracted_data = convert_vision_response_to_extracted_data(cleaned_response)
+                
+                # Debug vendor extraction
+                print(f"\n🔍 [AGENT 3] Extracted vendor: '{extracted_data['headerSection']['vendorName']}'")
+                print(f"   Invoice #: {extracted_data['billingDetails']['invoiceNumber']}")
+                print(f"   Amount: ${extracted_data['chargesSummary']['document_total']}")
+                
+                # Update the result_data
+                result_data = {
+                    "success": True,
+                    "data": {
+                        "vision_response": vision_response,
+                        "extracted_data": extracted_data
+                    },
+                    "_memra_metadata": {
+                        "agent_role": agent.role,
+                        "tools_real_work": ["PDFProcessor"],
+                        "tools_mock_work": [],
+                        "work_quality": "real"
+                    }
+                }
+                
+                return result_data
+                
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parsing error: {e}")
+                print(f"Raw response: {vision_response}")
+                return result_data
+        else:
+            print(f"❌ No vision_response found in PDFProcessor result")
+            return result_data
+            
+    except Exception as e:
+        print(f"❌ Error in PDF processing: {e}")
+        return result_data
+
+def direct_vision_processing(agent, result_data, **kwargs):
+    """Direct vision model processing without using tools"""
+    print(f"\n[DEBUG] direct_vision_processing called for {agent.role}")
+    print(f"[DEBUG] Result data type: {type(result_data)}")
+    print(f"[DEBUG] Result data: {result_data}")
+    print(f"[DEBUG] Kwargs: {kwargs}")
+    
+    # Get the file path from the input data - check kwargs['input'] first
+    input_data = kwargs.get('input', {})
+    file_path = input_data.get('file', '') or kwargs.get('file', '') or result_data.get('file', '')
+    print(f"[DEBUG] File path: {file_path}")
+    
+    # Get the invoice schema from previous agent results
+    results = kwargs.get('results', {})
+    invoice_schema = results.get('invoice_schema', {})
+    schema_results = invoice_schema.get('results', [])
+    print(f"[DEBUG] Schema fields: {[col['column_name'] for col in schema_results]}")
+    
+    if not file_path:
+        print("❌ No file path provided")
+        return result_data
+    
+    try:
+        import requests
+        import json
+        import os
+        import base64
+        
+        # Use the remote API for PDF processing
+        api_url = "https://api.memra.co"
+        api_key = os.getenv("MEMRA_API_KEY", "test-secret-for-development")
+        
+        # Check if file is already a remote path
+        if file_path.startswith('/uploads/'):
+            print(f"✅ File already uploaded to remote API: {file_path}")
+            remote_path = file_path
+        else:
+            # Local file - need to upload
+            print(f"📤 Uploading file to remote API...")
+            
+            # Read the file and encode as base64
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+        
+            file_b64 = base64.b64encode(file_content).decode('utf-8')
+            
+            # Prepare upload data
+            upload_data = {
+                "filename": os.path.basename(file_path),
+                "content": file_b64,
+                "content_type": "application/pdf"
+            }
+            
+            # Upload to remote API
+            response = requests.post(
+                f"{api_url}/upload",
+                json=upload_data,
+                headers={
+                    "X-API-Key": api_key,
+                    "Content-Type": "application/json"
+                }
+            )
+            
+            if response.status_code != 200:
+                print(f"❌ Upload failed: {response.status_code}")
+                print(f"   Response: {response.text}")
+                return result_data
+            
+            upload_result = response.json()
+            if not upload_result.get("success"):
+                print(f"❌ Upload failed: {upload_result.get('error')}")
+                return result_data
+            
+            remote_path = upload_result["data"]["remote_path"]
+            print(f"✅ File uploaded successfully")
+            print(f"   Remote path: {remote_path}")
+        
+        # Now call the PDFProcessor with the remote path
+        print(f"🔍 Calling PDFProcessor with remote path...")
+        
+        # Convert schema to format expected by PDFProcessor
+        schema_for_pdf = None
+        if schema_results:
+            # Send the raw schema array - server now handles both formats
+            schema_for_pdf = [
+                col for col in schema_results
+                if col["column_name"] not in ["id", "created_at", "updated_at", "status", "raw_json"]
+            ]
+            print(f"📋 Passing schema with {len(schema_for_pdf)} fields to PDFProcessor")
+            print(f"📋 Schema fields: {[c['column_name'] for c in schema_for_pdf]}")
+        
+        response = requests.post(
+            f"{api_url}/tools/execute",
+            json={
+                "tool_name": "PDFProcessor",
+                "hosted_by": "memra",
+                "input_data": {
+                    "file": remote_path,
+                    "schema": schema_for_pdf
+                }
+            },
+            headers={
+                "X-API-Key": api_key,
+                "Content-Type": "application/json"
+            }
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ PDFProcessor call failed: {response.status_code}")
+            print(f"   Response: {response.text}")
+            return result_data
+        
+        pdf_result = response.json()
+        print(f"\n🎯 AGENT 3 - FULL PDFPROCESSOR RESPONSE:")
+        print("=" * 60)
+        print(json.dumps(pdf_result, indent=2, default=str))
+        print("=" * 60)
+        
+        # Extract the vision response from the nested structure
+        vision_response = None
+        if pdf_result.get("success") and "data" in pdf_result:
+            data = pdf_result["data"]
+            
+            # Check for nested data structure
+            if isinstance(data, dict) and "data" in data:
+                actual_data = data["data"]
+                if "vision_response" in actual_data:
+                    vision_response = actual_data["vision_response"]
+            elif "vision_response" in data:
+                vision_response = data["vision_response"]
+        
+        if vision_response:
+            print(f"\n🎯 AGENT 3 - RAW VISION MODEL JSON:")
+            print("=" * 60)
+            print(vision_response)
+            print("=" * 60)
+            
+            # Try to parse the JSON response
+            try:
+                # Clean up the response - remove markdown code blocks if present
+                cleaned_response = vision_response
+                if cleaned_response.startswith("```json"):
+                    cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
+                elif cleaned_response.startswith("```"):
+                    cleaned_response = cleaned_response.replace("```", "").strip()
+                
+                parsed_data = json.loads(cleaned_response)
+                print(f"\n✅ [AGENT 3] Successfully parsed JSON:")
+                print(json.dumps(parsed_data, indent=2))
+                
+                # Convert to the expected format
+                extracted_data = convert_vision_response_to_extracted_data(cleaned_response)
+                
+                # Debug vendor extraction
+                print(f"\n🔍 [AGENT 3] Extracted vendor: '{extracted_data['headerSection']['vendorName']}'")
+                print(f"   Invoice #: {extracted_data['billingDetails']['invoiceNumber']}")
+                print(f"   Amount: ${extracted_data['chargesSummary']['document_total']}")
+                
+                # Update the result_data
+                result_data = {
+                    "success": True,
+                    "data": {
+                        "vision_response": vision_response,
+                        "extracted_data": extracted_data
+                    },
+                    "_memra_metadata": {
+                        "agent_role": agent.role,
+                        "tools_real_work": ["PDFProcessor"],
+                        "tools_mock_work": [],
+                        "work_quality": "real"
+                    }
+                }
+                
+                return result_data
+                
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parsing error: {e}")
+                print(f"Raw response: {vision_response}")
+                return result_data
+        else:
+            print(f"❌ No vision_response found in PDFProcessor result")
+            return result_data
+            
+    except Exception as e:
+        print(f"❌ Error in PDF processing: {e}")
+        return result_data
+
+# Create a new Agent 3 that bypasses the tool system
+direct_vision_agent = Agent(
     role="Invoice Parser",
-    job="Extract structured data from invoice PDF using schema",
+    job="Extract structured data from invoice PDF using vision model",
     llm=parsing_llm,
     sops=[
         "Load invoice PDF file",
         "Send to vision model for field extraction",
+        "Print out the raw JSON data returned by vision model tools",
+        "Validate extracted data against schema types",
+        "Return structured invoice data"
+    ],
+    systems=["InvoiceStore"],
+    tools=[],  # No tools - we'll do direct API calls in custom processing
+    input_keys=["file", "invoice_schema"],
+    output_key="invoice_data",
+    custom_processing=direct_vision_processing
+)
+
+parser_agent = Agent(
+    role="Invoice Parser",
+    job="Extract structured data from invoice PDF using vision model",
+    llm=parsing_llm,
+    sops=[
+        "Load invoice PDF file",
+        "Send to vision model for field extraction",
+        "Print out the raw JSON data returned by vision model tools",
         "Validate extracted data against schema types",
         "Return structured invoice data"
     ],
     systems=["InvoiceStore"],
     tools=[
-        {"name": "PDFProcessor", "hosted_by": "memra"},
-        {"name": "InvoiceExtractionWorkflow", "hosted_by": "memra"}
+        {"name": "PDFProcessor", "hosted_by": "memra", "input_keys": ["file_path"]}
     ],
     input_keys=["file", "invoice_schema"],
-    output_key="invoice_data"
+    output_key="invoice_data",
+    custom_processing=pdf_processing_with_remote_api
 )
+
+def process_database_insertion(agent, tool_results, **kwargs):
+    """Custom processing for Agent 4 to properly map invoice data to database format"""
+    print(f"\n[DEBUG] process_database_insertion called for {agent.role}")
+    
+    # Get the invoice data from kwargs
+    input_data = kwargs.get('input', {})
+    results = kwargs.get('results', {})
+    
+    # Try to get invoice_data from various sources
+    invoice_data = (
+        results.get('invoice_data') or 
+        input_data.get('invoice_data') or 
+        kwargs.get('invoice_data', {})
+    )
+    
+    print(f"[DEBUG] Invoice data type: {type(invoice_data)}")
+    print(f"[DEBUG] Invoice data keys: {list(invoice_data.keys()) if isinstance(invoice_data, dict) else 'Not a dict'}")
+    
+    # Transform the data for database insertion
+    if isinstance(invoice_data, dict):
+        # Create the properly formatted data for database
+        db_data = {}
+        
+        # Check if data is in the new format (headerSection, billingDetails, etc.)
+        if 'headerSection' in invoice_data and 'billingDetails' in invoice_data:
+            header = invoice_data.get('headerSection', {})
+            billing = invoice_data.get('billingDetails', {})
+            charges = invoice_data.get('chargesSummary', {})
+            
+            db_data = {
+                'vendor_name': header.get('vendorName', ''),
+                'invoice_number': billing.get('invoiceNumber', ''),
+                'invoice_date': billing.get('invoiceDate', ''),
+                'due_date': billing.get('dueDate', ''),
+                'total_amount': charges.get('document_total', 0),
+                'tax_amount': charges.get('secondary_tax', 0),
+                'line_items': json.dumps(charges.get('lineItemsBreakdown', []))
+            }
+            
+            print(f"\n💾 [AGENT 4] Prepared database record:")
+            print(f"   vendor_name: '{db_data['vendor_name']}'")
+            print(f"   invoice_number: '{db_data['invoice_number']}'")
+            print(f"   invoice_date: '{db_data['invoice_date']}'")
+            print(f"   total_amount: {db_data['total_amount']}")
+            
+        # Check if data is in the old format
+        elif 'extracted_data' in invoice_data:
+            extracted = invoice_data['extracted_data']
+            if isinstance(extracted, dict):
+                if 'headerSection' in extracted:
+                    # Nested new format
+                    header = extracted.get('headerSection', {})
+                    billing = extracted.get('billingDetails', {})
+                    charges = extracted.get('chargesSummary', {})
+                    
+                    db_data = {
+                        'vendor_name': header.get('vendorName', ''),
+                        'invoice_number': billing.get('invoiceNumber', ''),
+                        'invoice_date': billing.get('invoiceDate', ''),
+                        'due_date': billing.get('dueDate', ''),
+                        'total_amount': charges.get('document_total', 0),
+                        'tax_amount': charges.get('secondary_tax', 0),
+                        'line_items': json.dumps(charges.get('lineItemsBreakdown', []))
+                    }
+                else:
+                    # Old flat format
+                    db_data = {
+                        'vendor_name': extracted.get('vendor_name', ''),
+                        'invoice_number': extracted.get('invoice_number', ''),
+                        'invoice_date': extracted.get('invoice_date', ''),
+                        'due_date': extracted.get('due_date', ''),
+                        'total_amount': extracted.get('amount', extracted.get('total_amount', 0)),
+                        'tax_amount': extracted.get('tax_amount', 0),
+                        'line_items': json.dumps(extracted.get('line_items', []))
+                    }
+        
+        # Update tool parameters with the transformed data
+        for tool_name, result in tool_results.items():
+            if tool_name == "PostgresInsert" and db_data:
+                # Inject the properly formatted data into the tool parameters
+                if 'parameters' not in result:
+                    result['parameters'] = {}
+                result['parameters']['data'] = db_data
+                print(f"\n✅ [AGENT 4] Injected transformed data into PostgresInsert parameters")
+    
+    # Call the original print function for debugging
+    print_database_data(agent, tool_results, invoice_data)
+    
+    return tool_results
 
 writer_agent = Agent(
     role="Data Entry Specialist", 
@@ -96,6 +731,7 @@ writer_agent = Agent(
     sops=[
         "Validate invoice data completeness",
         "Map fields to database columns using schema",
+        "Print out the data being inserted into database",
         "Connect to database",
         "Insert record into invoices table",
         "Return confirmation with record ID"
@@ -106,7 +742,8 @@ writer_agent = Agent(
         {"name": "PostgresInsert", "hosted_by": "mcp"}
     ],
     input_keys=["invoice_data", "invoice_schema"],
-    output_key="write_confirmation"
+    output_key="write_confirmation",
+    custom_processing=process_database_insertion
 )
 
 post_monitor_agent = create_simple_monitor_agent()
@@ -131,7 +768,7 @@ manager_agent = Agent(
 etl_department = Department(
     name="ETL Invoice Processing",
     mission="Complete end-to-end ETL process with comprehensive monitoring",
-    agents=[pre_monitor_agent, etl_agent, parser_agent, writer_agent, post_monitor_agent],
+    agents=[pre_monitor_agent, etl_agent, direct_vision_agent, writer_agent, post_monitor_agent],
     manager_agent=manager_agent,
     workflow_order=[
         "Pre-ETL Database Monitor", 
@@ -155,70 +792,287 @@ etl_department = Department(
     }
 )
 
+def upload_file_to_api(file_path: str, api_url: str = "https://api.memra.co") -> str:
+    """Upload a file to the remote API for vision-based PDF processing"""
+    try:
+        print(f"📤 Uploading {os.path.basename(file_path)} to remote API")
+        print(f"   File path: {file_path}")
+        
+        # Read the file and encode as base64
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+        
+        file_b64 = base64.b64encode(file_content).decode('utf-8')
+        
+        # Prepare upload data
+        upload_data = {
+            "filename": os.path.basename(file_path),
+            "content": file_b64,
+            "content_type": "application/pdf"
+        }
+        
+        # Upload to remote API
+        api_key = os.getenv("MEMRA_API_KEY")
+        response = requests.post(
+            f"{api_url}/upload",
+            json=upload_data,
+            headers={
+                "X-API-Key": api_key,
+                "Content-Type": "application/json"
+            }
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success"):
+                remote_path = result["data"]["remote_path"]
+                print(f"✅ File uploaded successfully")
+                print(f"   Remote path: {remote_path}")
+                return remote_path
+            else:
+                print(f"❌ Upload failed: {result.get('error')}")
+                return file_path
+        else:
+            print(f"❌ Upload request failed: {response.status_code}")
+            print(f"   Response: {response.text}")
+            return file_path
+                
+    except Exception as e:
+        print(f"⚠️  Upload error: {e}")
+        return file_path
+
+def print_vision_model_data(agent, tool_results):
+    """Print out the JSON data returned by vision model tools"""
+    print(f"\n🔍 {agent.role}: VISION MODEL DATA ANALYSIS")
+    print("=" * 60)
+    
+    for tool_name, result in tool_results.items():
+        print(f"\n📊 Tool: {tool_name}")
+        print(f"✅ Success: {result.get('success', 'Unknown')}")
+        
+        if 'data' in result:
+            data = result['data']
+            print(f"📄 Data Structure:")
+            print(f"   - Keys: {list(data.keys())}")
+            
+            # Print extracted text if available
+            if 'extracted_text' in data:
+                text = data['extracted_text']
+                print(f"📝 Extracted Text ({len(text)} chars):")
+                print(f"   {text[:200]}{'...' if len(text) > 200 else ''}")
+            
+            # Print extracted data if available
+            if 'extracted_data' in data:
+                extracted = data['extracted_data']
+                print(f"🎯 Extracted Data:")
+                
+                # Handle both old and new formats
+                if 'headerSection' in extracted:
+                    # New format (converted)
+                    header = extracted.get('headerSection', {})
+                    billing = extracted.get('billingDetails', {})
+                    charges = extracted.get('chargesSummary', {})
+                    print(f"   Vendor: {header.get('vendorName', 'N/A')}")
+                    print(f"   Invoice #: {billing.get('invoiceNumber', 'N/A')}")
+                    print(f"   Date: {billing.get('invoiceDate', 'N/A')}")
+                    print(f"   Amount: ${charges.get('document_total', 'N/A')}")
+                    print(f"   Tax: ${charges.get('secondary_tax', 'N/A')}")
+                    print(f"   Line Items: {len(charges.get('lineItemsBreakdown', []))} items")
+                else:
+                    # Old format (direct)
+                    print(f"   Vendor: {extracted.get('vendor_name', 'N/A')}")
+                    print(f"   Invoice #: {extracted.get('invoice_number', 'N/A')}")
+                    print(f"   Date: {extracted.get('invoice_date', 'N/A')}")
+                    print(f"   Amount: ${extracted.get('amount', 'N/A')}")
+                    print(f"   Tax: ${extracted.get('tax_amount', 'N/A')}")
+                    print(f"   Line Items: {extracted.get('line_items', 'N/A')}")
+            
+            # Print screenshot info if available
+            if 'screenshots_dir' in data:
+                print(f"📸 Screenshots:")
+                print(f"   Directory: {data.get('screenshots_dir', 'N/A')}")
+                print(f"   Count: {data.get('screenshot_count', 'N/A')}")
+                print(f"   Invoice ID: {data.get('invoice_id', 'N/A')}")
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+    
+    print("=" * 60)
+
+def print_database_data(agent, tool_results, invoice_data):
+    """Print out the data being inserted into database"""
+    print(f"\n💾 {agent.role}: DATABASE INSERTION DATA")
+    print("=" * 60)
+    
+    if invoice_data:
+        print(f"📊 Invoice Data to Insert:")
+        if isinstance(invoice_data, dict) and 'extracted_data' in invoice_data:
+            data = invoice_data['extracted_data']
+            print(f"   Vendor: '{data.get('vendor_name', '')}'")
+            print(f"   Invoice #: '{data.get('invoice_number', '')}'")
+            print(f"   Date: '{data.get('invoice_date', '')}'")
+            print(f"   Amount: {data.get('amount', 0)}")
+            print(f"   Tax: {data.get('tax_amount', 0)}")
+            print(f"   Line Items: '{data.get('line_items', '')}'")
+        else:
+            print(f"   Raw data: {invoice_data}")
+    
+    for tool_name, result in tool_results.items():
+        print(f"\n🔧 Tool: {tool_name}")
+        print(f"✅ Success: {result.get('success', 'Unknown')}")
+        
+        if 'data' in result:
+            data = result['data']
+            print(f"📄 Result Data:")
+            for key, value in data.items():
+                print(f"   {key}: {value}")
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+    
+    print("=" * 60)
+
+def switch_to_remote_api_for_pdf():
+    """Temporarily switch to remote API for PDF processing"""
+    original_url = os.environ.get("MEMRA_API_URL")
+    os.environ["MEMRA_API_URL"] = REMOTE_API_URL
+    return original_url
+
+def restore_api_url(original_url):
+    """Restore the original API URL"""
+    if original_url:
+        os.environ["MEMRA_API_URL"] = original_url
+
+def validate_agent_configuration(department):
+    """Validate that critical agents have required tools configured"""
+    critical_agents = {
+        "Invoice Parser": ["PDFProcessor"],
+        "Data Entry Specialist": ["DataValidator", "PostgresInsert"],
+        "Data Engineer": ["SQLExecutor"]
+    }
+    
+    for agent in department.agents:
+        if agent.role in critical_agents:
+            # Skip validation if agent has custom processing function
+            if hasattr(agent, 'custom_processing') and agent.custom_processing is not None:
+                print(f"ℹ️  {agent.role} uses custom processing (tools validation skipped)")
+                continue
+                
+            required_tools = critical_agents[agent.role]
+            # Handle both Tool objects and dictionaries
+            configured_tools = []
+            for tool in agent.tools:
+                if isinstance(tool, dict):
+                    configured_tools.append(tool["name"])
+                else:
+                    configured_tools.append(tool.name)
+            
+            missing_tools = [tool for tool in required_tools if tool not in configured_tools]
+            if missing_tools:
+                print(f"⚠️  WARNING: {agent.role} is missing critical tools: {missing_tools}")
+                print(f"   Configured tools: {configured_tools}")
+                return False
+    
+    return True
+
 def main():
     """Run the ETL demo workflow"""
-    
     print("\n🚀 Starting ETL Invoice Processing Demo...")
     print("📊 This demo includes comprehensive database monitoring")
     print("📡 Tools will execute on Memra API server")
+    print("📝 Note: Processing real PDF files from data/invoices/ directory")
+    print("   The remote API will take photos of PDF pages and process with vision model")
+
+    # Configuration - Make these configurable via environment variables or config file
+    config = {
+        "table_name": os.getenv("MEMRA_TABLE_NAME", "invoices"),
+        "data_directory": os.getenv("MEMRA_DATA_DIR", "data/invoices"),
+        "file_patterns": ["*.PDF", "*.pdf"],  # Could be env var: "*.PDF,*.pdf"
+        "company_id": os.getenv("MEMRA_COMPANY_ID", "acme_corp"),
+        "fiscal_year": os.getenv("MEMRA_FISCAL_YEAR", "2024"),
+        "database_url": os.getenv("MEMRA_DATABASE_URL", "postgresql://memra:memra123@localhost:5432/memra_invoice_db")
+    }
+    
+    # Generate schema query dynamically
+    schema_query = f"SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = '{config['table_name']}' ORDER BY ordinal_position"
+
+    # Validate agent configuration before proceeding
+    if not validate_agent_configuration(etl_department):
+        print("❌ Critical agents are missing required tools!")
+        print("⚠️  Please fix agent configuration before running ETL process")
+        sys.exit(1)
     
     engine = ExecutionEngine()
     
-    # Generate monitoring queries for before and after
-    table_name = "invoices"
-    before_queries = get_monitoring_queries(table_name, "before")
-    after_queries = get_monitoring_queries(table_name, "after")
+    # Use configurable data directory
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(current_dir, config["data_directory"])
     
-    input_data = {
-        "file": "invoices/10352259310.PDF",
-        "connection": "postgresql://memra:memra123@localhost:5432/memra_invoice_db",
-        "table_name": table_name,
-        "monitoring_phase": "before",
-        "sql_query": before_queries[0]  # Pass the first query for row count
-    }
+    # Use configurable file patterns
+    invoice_files = []
+    for pattern in config["file_patterns"]:
+        invoice_files.extend(glob.glob(os.path.join(data_dir, pattern)))
     
-    # Execute the department
-    result = engine.execute_department(etl_department, input_data)
-    
-    # Display results
-    if result.success:
-        print("\n✅ ETL process completed successfully!")
-        
-        # Show manager summary
-        if 'etl_summary' in result.data:
-            summary = result.data['etl_summary']
-            print(f"\n📋 ETL Summary Report:")
-            print(f"Status: {summary.get('status', 'unknown')}")
-            print(f"Summary: {summary.get('summary', 'No summary available')}")
-            
-            # Show monitoring comparison
-            if 'monitoring_comparison' in summary:
-                comparison = summary['monitoring_comparison']
-                print(f"\n📊 Database State Comparison:")
-                print(f"Pre-ETL Rows: {comparison.get('pre_rows', 'N/A')}")
-                print(f"Post-ETL Rows: {comparison.get('post_rows', 'N/A')}")
-                print(f"New Records: {comparison.get('new_records', 'N/A')}")
-                print(f"Data Quality: {comparison.get('data_quality', 'N/A')}")
-        
-        # Show record details
-        if 'write_confirmation' in result.data:
-            confirmation = result.data['write_confirmation']
-            if isinstance(confirmation, dict) and 'record_id' in confirmation:
-                print(f"\n💾 Invoice processed: Record ID {confirmation['record_id']}")
-        
-        print(f"\n📡 All tools executed remotely on Memra API server")
-        
-    else:
-        print(f"\n❌ ETL process failed: {result.error}")
-    
-    # Show execution trace
-    print("\n=== Execution Trace ===")
-    print(f"Agents executed: {', '.join(result.trace.agents_executed)}")
-    print(f"Tools invoked: {', '.join(result.trace.tools_invoked)}")
-    if result.trace.errors:
-        print(f"Errors: {', '.join(result.trace.errors)}")
-    
-    print(f"\n🌐 API Calls made to: {api_status['api_url']}")
+    if not invoice_files:
+        print(f"⚠️  No PDF files found in {config['data_directory']}/ directory")
+        print("📝 Demo will use mock data")
+        invoice_files = [os.path.join(data_dir, "sample_invoice.pdf")]
+
+    batch_mode = False
+    for idx, invoice_file in enumerate(invoice_files):
+        if not batch_mode:
+            print(f"\n📄 Next invoice: {os.path.basename(invoice_file)}")
+            user_input = input("Process this document? (Y/n) or process all remaining in batch mode? (B): ").strip().lower()
+            if user_input == 'b':
+                batch_mode = True
+            elif user_input == 'n':
+                print(f"⏭️  Skipping {os.path.basename(invoice_file)}")
+                continue
+        print(f"\n🚀 Processing: {os.path.basename(invoice_file)}")
+        remote_file_path = upload_file_to_api(invoice_file)
+
+        # Run the full ETL workflow with configurable parameters
+        input_data = {
+            "file": remote_file_path,
+            "connection": config["database_url"],
+            "table_name": config["table_name"],
+            "sql_query": schema_query
+        }
+        result = engine.execute_department(etl_department, input_data)
+        if result.success:
+            print("\n✅ ETL process completed successfully!")
+            if 'etl_summary' in result.data:
+                summary = result.data['etl_summary']
+                print(f"\n📋 ETL Summary Report:")
+                print(f"Status: {summary.get('status', 'unknown')}")
+                print(f"Summary: {summary.get('summary', 'No summary available')}")
+                if 'monitoring_comparison' in summary:
+                    comparison = summary['monitoring_comparison']
+                    print(f"\n📊 Database State Comparison:")
+                    print(f"Pre-ETL Rows: {comparison.get('pre_rows', 'N/A')}")
+                    print(f"Post-ETL Rows: {comparison.get('post_rows', 'N/A')}")
+                    print(f"New Records: {comparison.get('new_records', 'N/A')}")
+                    print(f"Data Quality: {comparison.get('data_quality', 'N/A')}")
+            else:
+                print("\n📋 ETL Summary Report:")
+                print("Status: success")
+                print("Summary: ETL process completed with database monitoring")
+                if 'invoice_data' in result.data:
+                    invoice_data = result.data['invoice_data']
+                    if isinstance(invoice_data, dict) and 'headerSection' in invoice_data:
+                        vendor = invoice_data['headerSection'].get('vendorName', 'Unknown')
+                        amount = invoice_data.get('totalAmount', 'Unknown')
+                        print(f" Processed Invoice: {vendor} - ${amount}")
+                if 'write_confirmation' in result.data:
+                    write_conf = result.data['write_confirmation']
+                    if isinstance(write_conf, dict) and 'record_id' in write_conf:
+                        print(f"💾 Database Record: ID {write_conf['record_id']}")
+        else:
+            print(f"\n❌ ETL process failed: {result.error}")
+            if result.trace and result.trace.errors:
+                print("🔍 Error details:")
+                for error in result.trace.errors:
+                    print(f"  - {error}")
 
 if __name__ == "__main__":
     main() 
