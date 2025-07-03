@@ -51,11 +51,34 @@ A complete end-to-end ETL (Extract, Transform, Load) workflow that demonstrates:
    docker ps | grep memra-postgres
    ```
 
+#### **Setup Demo Data (Optional)**
+```bash
+# Run the setup script to prepare demo data
+cd demos/etl_invoice_processing
+python setup_demo_data.py
+```
+
+This script will:
+- Create the data directory structure
+- Look for existing invoice files in common locations
+- Copy sample files if found
+- Create placeholder files for testing
+
 #### **Run the Demo**
 ```bash
 cd /path/to/memra/demos/etl_invoice_processing
 python etl_invoice_demo.py
 ```
+
+#### **Using Your Own Invoice Files**
+1. Place your PDF invoice files in `demos/etl_invoice_processing/data/invoices/`
+2. Rename them to `invoice_001.pdf`, `invoice_002.pdf`, etc.
+3. Run the demo - it will automatically discover and process all PDF files
+
+**File Size Guidelines:**
+- Individual files: 1-5 MB each
+- Total demo data: 20-50 MB recommended
+- GitHub supports up to 100 MB per file
 
 ### 📈 Expected Output
 

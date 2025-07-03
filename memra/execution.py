@@ -83,7 +83,45 @@ class ExecutionEngine:
                         )
                 
                 # Store result for next agent
-                context["results"][agent.output_key] = result.get("data")
+                agent_result_data = result.get("data")
+                
+                # DEBUG: Log what each agent is actually outputting
+                print(f"🔍 DEBUG: {agent.role} output_key='{agent.output_key}'")
+                print(f"🔍 DEBUG: {agent.role} result_data type: {type(agent_result_data)}")
+                if isinstance(agent_result_data, dict):
+                    print(f"🔍 DEBUG: {agent.role} result_data keys: {list(agent_result_data.keys())}")
+                else:
+                    print(f"🔍 DEBUG: {agent.role} result_data: {agent_result_data}")
+                
+                # Special handling for Invoice Parser - extract only the extracted_data
+                if agent.role == "Invoice Parser" and agent.output_key == "invoice_data":
+                    # PDFProcessor returns: {'success': True, 'data': {'extracted_data': {...}}, '_memra_metadata': {...}}
+                    # We need to extract: agent_result_data['data']['extracted_data']
+                    if (isinstance(agent_result_data, dict) and 
+                        agent_result_data.get('success') and 
+                        'data' in agent_result_data and 
+                        isinstance(agent_result_data['data'], dict) and
+                        'extracted_data' in agent_result_data['data']):
+                        
+                        # Extract only the extracted_data portion from the nested structure
+                        context["results"][agent.output_key] = agent_result_data['data']['extracted_data']
+                        print(f"🔧 {agent.role}: Extracted invoice_data from nested response structure")
+                        print(f"🔧 {agent.role}: Invoice data keys: {list(agent_result_data['data']['extracted_data'].keys())}")
+                    else:
+                        context["results"][agent.output_key] = agent_result_data
+                        print(f"⚠️  {agent.role}: No extracted_data found in response")
+                        print(f"⚠️  {agent.role}: Available keys: {list(agent_result_data.keys()) if isinstance(agent_result_data, dict) else 'not a dict'}")
+                else:
+                    context["results"][agent.output_key] = agent_result_data
+                
+                # DEBUG: Log what's now stored in context for next agents
+                print(f"🔍 DEBUG: Context now contains: {list(context['results'].keys())}")
+                for key, value in context["results"].items():
+                    if isinstance(value, dict):
+                        print(f"🔍 DEBUG: Context[{key}] keys: {list(value.keys())}")
+                    else:
+                        print(f"🔍 DEBUG: Context[{key}]: {value}")
+                
                 print(f"✅ Step {i} completed in {agent_duration:.1f}s")
             
             # Execute manager agent for final validation if present
@@ -170,12 +208,19 @@ class ExecutionEngine:
             
             # Prepare input data for agent
             agent_input = {}
+            print(f"🔍 DEBUG: {agent.role} input_keys: {agent.input_keys}")
+            print(f"🔍 DEBUG: {agent.role} context input keys: {list(context['input'].keys())}")
+            print(f"🔍 DEBUG: {agent.role} context results keys: {list(context['results'].keys())}")
+            
             for key in agent.input_keys:
                 if key in context["input"]:
                     agent_input[key] = context["input"][key]
                     print(f"📥 {agent.role}: I received '{key}' as input")
                 elif key in context["results"]:
-                    agent_input[key] = context["results"][key]
+                    # Handle data transformation for specific tools
+                    raw_data = context["results"][key]
+                    
+                    agent_input[key] = raw_data
                     print(f"📥 {agent.role}: I got '{key}' from a previous agent")
                 else:
                     print(f"🤔 {agent.role}: Hmm, I'm missing input '{key}' but I'll try to work without it")
@@ -246,6 +291,99 @@ class ExecutionEngine:
                         "error": f"Tool {tool_name} failed: {tool_result.get('error', 'Unknown error')}"
                     }
                 
+                # Print JSON data for vision model tools
+                if tool_name in ["PDFProcessor", "InvoiceExtractionWorkflow"]:
+                    print(f"\n🔍 {agent.role}: VISION MODEL JSON DATA - {tool_name}")
+                    print("=" * 60)
+                    print(f"📊 Tool: {tool_name}")
+                    print(f"✅ Success: {tool_result.get('success', 'Unknown')}")
+                    
+                    # Handle nested data structure
+                    nested_data = tool_result.get('data', {})
+                    if 'data' in nested_data:
+                        nested_data = nested_data['data']
+                    
+                    print(f"📄 Data Structure:")
+                    print(f"   - Keys: {list(nested_data.keys())}")
+                    
+                    # Print extracted text if available
+                    if 'extracted_text' in nested_data:
+                        text = nested_data['extracted_text']
+                        print(f"📝 Extracted Text ({len(text)} chars):")
+                        print(f"   {text[:300]}{'...' if len(text) > 300 else ''}")
+                    else:
+                        print("❌ No 'extracted_text' in response")
+                    
+                    # Print extracted data if available
+                    if 'extracted_data' in nested_data:
+                        extracted = nested_data['extracted_data']
+                        print(f"🎯 Extracted Data:")
+                        for k, v in extracted.items():
+                            print(f"   {k}: {v}")
+                    else:
+                        print("❌ No 'extracted_data' in response")
+                    
+                    # Print screenshot info if available
+                    if 'screenshots_dir' in nested_data:
+                        print(f"📸 Screenshots:")
+                        print(f"   Directory: {nested_data.get('screenshots_dir', 'N/A')}")
+                        print(f"   Count: {nested_data.get('screenshot_count', 'N/A')}")
+                        print(f"   Invoice ID: {nested_data.get('invoice_id', 'N/A')}")
+                    
+                    if 'error' in tool_result:
+                        print(f"❌ Error: {tool_result['error']}")
+                    print("=" * 60)
+                
+                # Print JSON data for database tools
+                if tool_name in ["DataValidator", "PostgresInsert"]:
+                    print(f"\n💾 {agent.role}: DATABASE TOOL JSON DATA - {tool_name}")
+                    print("=" * 60)
+                    print(f"📊 Tool: {tool_name}")
+                    print(f"✅ Success: {tool_result.get('success', 'Unknown')}")
+                    
+                    if 'data' in tool_result:
+                        data = tool_result['data']
+                        print(f"📄 Data Structure:")
+                        print(f"   - Keys: {list(data.keys())}")
+                        
+                        # Print validation results
+                        if tool_name == "DataValidator":
+                            print(f"🔍 Validation Results:")
+                            print(f"   Valid: {data.get('is_valid', 'N/A')}")
+                            print(f"   Errors: {data.get('validation_errors', 'N/A')}")
+                            if 'validated_data' in data:
+                                validated = data['validated_data']
+                                if isinstance(validated, dict) and 'extracted_data' in validated:
+                                    extracted = validated['extracted_data']
+                                    print(f"   Data to Insert:")
+                                    print(f"     Vendor: '{extracted.get('vendor_name', '')}'")
+                                    print(f"     Invoice #: '{extracted.get('invoice_number', '')}'")
+                                    print(f"     Date: '{extracted.get('invoice_date', '')}'")
+                                    print(f"     Amount: {extracted.get('amount', 0)}")
+                                    print(f"     Tax: {extracted.get('tax_amount', 0)}")
+                        
+                        # Print insertion results
+                        if tool_name == "PostgresInsert":
+                            print(f"💾 Insertion Results:")
+                            print(f"   Record ID: {data.get('record_id', 'N/A')}")
+                            print(f"   Table: {data.get('database_table', 'N/A')}")
+                            print(f"   Success: {data.get('success', 'N/A')}")
+                            if 'inserted_data' in data:
+                                inserted = data['inserted_data']
+                                if isinstance(inserted, dict) and 'extracted_data' in inserted:
+                                    extracted = inserted['extracted_data']
+                                    print(f"   Inserted Data:")
+                                    print(f"     Vendor: '{extracted.get('vendor_name', '')}'")
+                                    print(f"     Invoice #: '{extracted.get('invoice_number', '')}'")
+                                    print(f"     Date: '{extracted.get('invoice_date', '')}'")
+                                    print(f"     Amount: {extracted.get('amount', 0)}")
+                                    print(f"     Tax: {extracted.get('tax_amount', 0)}")
+                    
+                    if 'error' in tool_result:
+                        print(f"❌ Error: {tool_result['error']}")
+                    
+                    print("=" * 60)
+                
                 # Check if this tool did real work or mock work
                 tool_data = tool_result.get("data", {})
                 if self._is_real_work(tool_name, tool_data):
@@ -265,9 +403,29 @@ class ExecutionEngine:
                 "work_quality": "real" if tools_with_real_work else "mock"
             }
             
+            # Call custom processing function if provided
+            if agent.custom_processing and callable(agent.custom_processing):
+                print(f"\n🔧 {agent.role}: Applying custom processing...")
+                try:
+                    custom_result = agent.custom_processing(agent, result_data, **context)
+                    if custom_result:
+                        result_data = custom_result
+                except Exception as e:
+                    print(f"⚠️ {agent.role}: Custom processing failed: {e}")
+                    logger.warning(f"Custom processing failed for {agent.role}: {e}")
+            
+            # Handle agents without tools - they should still be able to pass data
+            if len(agent.tools) == 0:
+                # Agent has no tools, but should still be able to pass input data through
+                print(f"📝 {agent.role}: I have no tools, but I'll pass through my input data")
+                # Pass through the input data as output
+                result_data.update(agent_input)
+            
             # Agent reports completion
             if tools_with_real_work:
                 print(f"🎉 {agent.role}: Perfect! I completed my work with real data processing")
+            elif len(agent.tools) == 0:
+                print(f"📝 {agent.role}: I passed through my input data (no tools needed)")
             else:
                 print(f"📝 {agent.role}: I finished my work, but used simulated data (still learning!)")
             
@@ -287,95 +445,108 @@ class ExecutionEngine:
             }
     
     def _is_real_work(self, tool_name: str, tool_data: Dict[str, Any]) -> bool:
-        """Determine if a tool did real work or returned mock data"""
+        """Determine if a tool performed real work vs mock/simulated work"""
+        
+        # Handle nested data structure from server tools
+        if "data" in tool_data and isinstance(tool_data["data"], dict):
+            # Server tools return nested structure: {"success": true, "data": {"success": true, "data": {...}}}
+            if "data" in tool_data["data"]:
+                actual_data = tool_data["data"]["data"]
+            else:
+                actual_data = tool_data["data"]
+        else:
+            actual_data = tool_data
         
         # Check for specific indicators of real work
         if tool_name == "PDFProcessor":
-            # Real work if it has actual image paths and file size
+            # Real work if it has actual extracted data with proper MCP format structure
             return (
-                "metadata" in tool_data and 
-                "file_size" in tool_data["metadata"] and
-                tool_data["metadata"]["file_size"] > 1000 and  # Real file size
-                "pages" in tool_data and
-                len(tool_data["pages"]) > 0 and
-                "image_path" in tool_data["pages"][0]
+                "extracted_data" in actual_data and
+                "headerSection" in actual_data["extracted_data"] and
+                "billingDetails" in actual_data["extracted_data"] and
+                "chargesSummary" in actual_data["extracted_data"] and
+                actual_data["extracted_data"]["headerSection"].get("vendorName", "") != "" and
+                actual_data["extracted_data"]["billingDetails"].get("invoiceNumber", "") != "" and
+                actual_data["extracted_data"]["billingDetails"].get("invoiceDate", "") != "" and
+                actual_data["extracted_data"]["chargesSummary"].get("document_total", 0) > 0
             )
         
         elif tool_name == "InvoiceExtractionWorkflow":
             # Real work if it has actual extracted data with specific vendor info
             return (
-                "headerSection" in tool_data and
-                "vendorName" in tool_data["headerSection"] and
-                tool_data["headerSection"]["vendorName"] not in ["", "UNKNOWN", "Sample Vendor"] and
-                "chargesSummary" in tool_data and
-                "memra_checksum" in tool_data["chargesSummary"]
+                "extracted_data" in actual_data and
+                "vendor_name" in actual_data["extracted_data"] and
+                "invoice_number" in actual_data["extracted_data"] and
+                "invoice_date" in actual_data["extracted_data"] and
+                actual_data["extracted_data"]["invoice_date"] != "" and  # Valid date
+                actual_data["extracted_data"]["vendor_name"] not in ["", "UNKNOWN", "Sample Vendor"]
             )
         
         elif tool_name == "DatabaseQueryTool":
             # Real work if it loaded the actual schema file (more than 3 columns)
             return (
-                "columns" in tool_data and
-                len(tool_data["columns"]) > 3
+                "columns" in actual_data and
+                len(actual_data["columns"]) > 3
             )
         
         elif tool_name == "DataValidator":
             # Real work if it actually validated real data with meaningful validation
             return (
-                "validation_errors" in tool_data and
-                isinstance(tool_data["validation_errors"], list) and
-                "is_valid" in tool_data and
+                "validation_errors" in actual_data and
+                isinstance(actual_data["validation_errors"], list) and
+                "is_valid" in actual_data and
                 # Check if it's validating real extracted data (not just mock data)
-                len(str(tool_data)) > 100 and  # Real validation results are more substantial
-                not tool_data.get("_mock", False)  # Not mock data
+                len(str(actual_data)) > 100 and  # Real validation results are more substantial
+                not actual_data.get("_mock", False)  # Not mock data
             )
         
         elif tool_name == "PostgresInsert":
             # Real work if it successfully inserted into a real database
             return (
-                "success" in tool_data and
-                tool_data["success"] == True and
-                "record_id" in tool_data and
-                isinstance(tool_data["record_id"], int) and  # Real DB returns integer IDs
-                "database_table" in tool_data and  # Real implementation includes table name
-                not tool_data.get("_mock", False)  # Not mock data
+                "success" in actual_data and
+                actual_data["success"] == True and
+                "record_id" in actual_data and
+                isinstance(actual_data["record_id"], int) and  # Real DB returns integer IDs
+                "database_table" in actual_data and  # Real implementation includes table name
+                not actual_data.get("_mock", False)  # Not mock data
             )
         
         elif tool_name == "FileDiscovery":
             # Real work if it actually discovered files in a real directory
             return (
-                "files" in tool_data and
-                isinstance(tool_data["files"], list) and
-                "directory" in tool_data and
-                tool_data.get("success", False) == True
+                "files" in actual_data and
+                isinstance(actual_data["files"], list) and
+                "directory" in actual_data and
+                actual_data.get("success", False) == True
             )
             
         elif tool_name == "FileCopy":
             # Real work if it actually copied a file
             return (
-                "destination_path" in tool_data and
-                "source_path" in tool_data and
-                tool_data.get("success", False) == True and
-                tool_data.get("operation") == "copy_completed"
+                "destination_path" in actual_data and
+                "source_path" in actual_data and
+                actual_data.get("success", False) == True and
+                actual_data.get("operation") == "copy_completed"
             )
         
         elif tool_name == "TextToSQL":
             # Real work if it actually executed SQL and returned real results
             return (
-                "generated_sql" in tool_data and
-                "results" in tool_data and
-                isinstance(tool_data["results"], list) and
-                tool_data.get("success", False) == True and
-                not tool_data.get("_mock", False)  # Not mock data
+                "generated_sql" in actual_data and
+                "results" in actual_data and
+                isinstance(actual_data["results"], list) and
+                actual_data.get("success", False) == True and
+                not actual_data.get("_mock", False)  # Not mock data
             )
         
         elif tool_name == "SQLExecutor":
             # Real work if it actually executed SQL and returned real results
             return (
-                "query" in tool_data and
-                "results" in tool_data and
-                isinstance(tool_data["results"], list) and
-                "row_count" in tool_data and
-                not tool_data.get("_mock", False)  # Not mock data
+                "query" in actual_data and
+                "results" in actual_data and
+                isinstance(actual_data["results"], list) and
+                "row_count" in actual_data and
+                not actual_data.get("_mock", False)  # Not mock data
             )
         
         # Default to mock work

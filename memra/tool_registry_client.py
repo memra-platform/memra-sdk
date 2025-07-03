@@ -62,7 +62,7 @@ class ToolRegistryClient:
             }
             
             # Make API call
-            with httpx.Client(timeout=120.0) as client:  # Longer timeout for tool execution
+            with httpx.Client(timeout=60.0) as client:  # Reduced timeout for faster response
                 response = client.post(
                     f"{self.api_base}/tools/execute",
                     headers={
@@ -81,7 +81,7 @@ class ToolRegistryClient:
             logger.error(f"Tool {tool_name} execution timed out")
             return {
                 "success": False,
-                "error": f"Tool execution timed out after 120 seconds"
+                "error": f"Tool execution timed out after 60 seconds"
             }
         except httpx.HTTPStatusError as e:
             logger.error(f"API error for tool {tool_name}: {e.response.status_code}")

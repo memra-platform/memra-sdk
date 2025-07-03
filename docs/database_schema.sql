@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     line_items JSONB,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    raw_json JSONB
 );
 
 -- Create indexes for better performance
@@ -62,6 +63,25 @@ CREATE TRIGGER update_invoices_updated_at
 -- status: Invoice processing status (default: 'pending')
 -- created_at: Record creation timestamp
 -- updated_at: Last update timestamp (auto-updated)
+
+-- Add raw_json column for storing full extracted JSON
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS raw_json JSONB;
+
+-- Create a view to flatten the JSON for analytics
+CREATE OR REPLACE VIEW invoice_flat_view AS
+SELECT
+    id,
+    raw_json->'billingDetails'->>'invoiceNumber' AS invoice_number,
+    raw_json->'headerSection'->>'vendorName' AS vendor_name,
+    (raw_json->'billingDetails'->>'invoiceDate')::date AS invoice_date,
+    (raw_json->'billingDetails'->>'dueDate')::date AS due_date,
+    (raw_json->'chargesSummary'->>'document_total')::numeric AS total_amount,
+    (raw_json->'chargesSummary'->>'secondary_tax')::numeric AS tax_amount,
+    raw_json->'chargesSummary'->'lineItemsBreakdown' AS line_items,
+    raw_json->>'status' AS status,
+    created_at,
+    updated_at
+FROM invoices;
 
 -- Verify the setup
 SELECT 'Database schema setup complete!' as status; 

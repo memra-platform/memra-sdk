@@ -26,6 +26,7 @@ class Agent(BaseModel):
     allow_delegation: bool = False
     fallback_agents: Optional[Dict[str, str]] = None
     config: Optional[Dict[str, Any]] = None
+    custom_processing: Optional[Any] = None  # Function to call after tool execution
 
 class ExecutionPolicy(BaseModel):
     retry_on_fail: bool = True
