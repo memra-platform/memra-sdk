@@ -11,6 +11,19 @@ By the end of this guide, you'll have:
 - ✅ ETL workflow processing PDF invoices
 - ✅ Data stored in PostgreSQL database
 
+## 📋 Repository Structure
+
+The Memra SDK repository is **self-contained** and includes everything needed to run the ETL demo:
+
+- **`memra/`** - Core SDK library
+- **`demos/etl_invoice_processing/`** - Complete ETL workflow demo
+- **`docker-compose.yml`** - PostgreSQL and MCP bridge setup
+- **`mcp_bridge_server.py`** - Local MCP tool server
+- **`docs/`** - Database schema and sample data
+- **`examples/`** - Additional workflow examples
+
+**Note**: The SDK repo includes all necessary components. You don't need access to private repositories to run the demos.
+
 ## 📋 Prerequisites
 
 ### System Requirements
@@ -83,21 +96,11 @@ python3 -c "import memra; print('Memra installed successfully!')"
 
 ### Step 4: Set Up PostgreSQL Database
 
-We'll use Docker to run PostgreSQL:
+We'll use Docker Compose to run PostgreSQL (included in the SDK repo):
 
 ```bash
-# Create a Docker network for our services
-docker network create memra-network
-
-# Start PostgreSQL container
-docker run -d \
-  --name memra-postgres \
-  --network memra-network \
-  -e POSTGRES_DB=memra_invoice_db \
-  -e POSTGRES_USER=memra \
-  -e POSTGRES_PASSWORD=memra123 \
-  -p 5433:5432 \
-  postgres:15
+# Start PostgreSQL using Docker Compose
+docker compose up -d postgres
 
 # Wait a moment for PostgreSQL to start
 sleep 5
@@ -106,52 +109,22 @@ sleep 5
 docker ps | grep memra-postgres
 ```
 
-### Step 5: Set Up the Database Schema
+### Step 5: Database Schema (Auto-Configured)
+
+The database schema is automatically created when PostgreSQL starts via Docker Compose. The schema includes:
+
+- **`invoices`** table with all necessary columns
+- **`invoice_flat_view`** view for easy querying
+- **Sample data** for testing
+
+You can verify the schema was created:
 
 ```bash
-# Install PostgreSQL client tools
-# On macOS: brew install postgresql
-# On Ubuntu: sudo apt-get install postgresql-client
-# On Windows: Use the PostgreSQL installer
+# Check if the table exists
+psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "\dt"
 
-# Create the database schema
-psql -h localhost -p 5433 -U memra -d memra_invoice_db -c "
-CREATE TABLE IF NOT EXISTS invoices (
-    id SERIAL PRIMARY KEY,
-    invoice_number VARCHAR NOT NULL,
-    vendor_name VARCHAR NOT NULL,
-    invoice_date DATE NOT NULL,
-    due_date DATE,
-    total_amount NUMERIC NOT NULL,
-    tax_amount NUMERIC,
-    line_items JSONB,
-    status VARCHAR NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    raw_json JSONB
-);
-
-CREATE OR REPLACE VIEW invoice_flat_view AS
-SELECT
-    id,
-    raw_json->'billingDetails'->>'invoiceNumber' AS invoice_number,
-    raw_json->'headerSection'->>'vendorName' AS vendor_name,
-    CASE 
-        WHEN raw_json->'billingDetails'->>'invoiceDate' = '' THEN NULL
-        ELSE (raw_json->'billingDetails'->>'invoiceDate')::date 
-    END AS invoice_date,
-    CASE 
-        WHEN raw_json->'billingDetails'->>'dueDate' = '' THEN NULL
-        ELSE (raw_json->'billingDetails'->>'dueDate')::date 
-    END AS due_date,
-    (raw_json->'chargesSummary'->>'document_total')::numeric AS total_amount,
-    (raw_json->'chargesSummary'->>'secondary_tax')::numeric AS tax_amount,
-    raw_json->'chargesSummary'->'lineItemsBreakdown' AS line_items,
-    raw_json->>'status' AS status,
-    created_at,
-    updated_at
-FROM invoices;
-"
+# View the table structure
+psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "\d invoices"
 ```
 
 ### Step 6: Install Additional Dependencies
@@ -171,11 +144,11 @@ pip install build twine
 export MEMRA_API_KEY="test-secret-for-development"
 
 # Set database connection
-export DATABASE_URL="postgresql://memra:memra123@localhost:5433/memra_invoice_db"
+export DATABASE_URL="postgresql://memra:memra123@localhost:5432/memra_invoice_db"
 
 # Add to your shell profile (optional, for persistence)
 echo 'export MEMRA_API_KEY="test-secret-for-development"' >> ~/.bashrc
-echo 'export DATABASE_URL="postgresql://memra:memra123@localhost:5433/memra_invoice_db"' >> ~/.bashrc
+echo 'export DATABASE_URL="postgresql://memra:memra123@localhost:5432/memra_invoice_db"' >> ~/.bashrc
 ```
 
 ### Step 8: Start the MCP Bridge Server
@@ -183,10 +156,7 @@ echo 'export DATABASE_URL="postgresql://memra:memra123@localhost:5433/memra_invo
 The MCP bridge server provides tools for the ETL workflow:
 
 ```bash
-# Navigate to the memra-ops directory
-cd memra-ops
-
-# Start the MCP bridge server
+# Start the MCP bridge server (included in SDK repo)
 python3 mcp_bridge_server.py &
 
 # Wait for the server to start
@@ -198,24 +168,18 @@ curl -s http://localhost:8081/health
 
 You should see a response indicating the server is healthy.
 
-### Step 9: Download Sample Invoice Data
+### Step 9: Sample Invoice Data
+
+The SDK repo includes sample PDF invoices for testing:
 
 ```bash
-# Navigate back to the main directory
-cd ..
+# Check the sample data directory
+ls -la demos/etl_invoice_processing/data/invoices/
 
-# Create the data directory
-mkdir -p demos/etl_invoice_processing/data/invoices
-
-# Download sample invoice PDFs (you'll need to provide your own PDF files)
-# For testing, you can use any PDF invoice files you have
-# Place them in: demos/etl_invoice_processing/data/invoices/
-
-# Example: Copy existing PDF files if you have them
-# cp /path/to/your/invoices/*.pdf demos/etl_invoice_processing/data/invoices/
+# You should see multiple PDF files ready for testing
 ```
 
-**Note**: You'll need to provide your own PDF invoice files for testing. Any PDF invoice will work.
+**Note**: The SDK includes sample PDF invoices for immediate testing. You can also add your own PDF files to this directory.
 
 ### Step 10: Run the ETL Workflow
 
@@ -243,7 +207,7 @@ python3 etl_invoice_demo.py
 
 ```bash
 # Check the database for processed invoices
-psql -h localhost -p 5433 -U memra -d memra_invoice_db -c "
+psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "
 SELECT 
     id,
     invoice_number,
@@ -258,7 +222,7 @@ LIMIT 10;
 "
 
 # Check the raw JSON data
-psql -h localhost -p 5433 -U memra -d memra_invoice_db -c "
+psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "
 SELECT 
     id,
     raw_json->'billingDetails'->>'invoiceNumber' as invoice_number,
@@ -291,7 +255,6 @@ docker logs memra-postgres
 curl -s http://localhost:8081/health
 
 # If not running, restart it
-cd memra-ops
 python3 mcp_bridge_server.py &
 ```
 
