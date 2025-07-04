@@ -393,10 +393,9 @@ You now have a working AI-powered ETL workflow that can process invoices automat
 
 ## 📞 Getting Help
 
-- **Documentation**: [docs.memra.co](https://docs.memra.co)
 - **GitHub Issues**: [Report problems here](https://github.com/memra-platform/memra-sdk/issues)
 - **Discussions**: [Ask questions here](https://github.com/memra-platform/memra-sdk/discussions)
-- **Email**: support@memra.com
+- **Email**: hello@memra.com
 
 ---
 
