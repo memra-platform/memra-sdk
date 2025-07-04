@@ -8,13 +8,17 @@ Get up and running with Memra in **5 minutes**!
 
 ## 1. Install Memra SDK
 ```bash
+# Upgrade pip first (recommended, especially for Windows)
+python -m pip install --upgrade pip
+
+# Install Memra SDK
 pip install memra
 ```
 
 ## 2. Clone the Repository (with Submodules)
 ```bash
-# Clone with submodules for full functionality
-git clone --recurse-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
+# Clone with submodules for full functionality (shallow for minimal download)
+git clone --recurse-submodules --shallow-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
 cd memra-sdk
 
 # Setup sparse checkout for minimal download (optional)
@@ -80,7 +84,7 @@ You should see output like:
 
 - **Explore examples:** `python examples/accounts_payable_client.py`
 - **Check database:** `docker exec -it memra_postgres psql -U memra -d memra_invoice_db`
-- **Stop services:** `docker-compose down`
+- **Stop services:** `docker compose down`
 
 ## 🆘 Need Help?
 
