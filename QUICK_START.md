@@ -3,16 +3,22 @@
 Get up and running with Memra in **5 minutes**!
 
 > **💡 New to Memra?** If you need more detailed setup instructions or run into issues, check out our [Detailed Installation Guide](INSTALLATION_GUIDE.md) or use our automated setup script: `bash scripts/setup_newbie.sh`
+>
+> **🔧 Submodules:** This repo uses git submodules for infrastructure and workflow templates. The sparse checkout gives you minimal access to essential files only.
 
 ## 1. Install Memra SDK
 ```bash
 pip install memra
 ```
 
-## 2. Clone the Repository
+## 2. Clone the Repository (with Submodules)
 ```bash
-git clone https://github.com/memra-platform/memra-sdk.git
+# Clone with submodules for full functionality
+git clone --recurse-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
 cd memra-sdk
+
+# Setup sparse checkout for minimal download (optional)
+bash scripts/setup_submodules.sh
 ```
 
 ## 3. Set Your API Key
@@ -22,8 +28,10 @@ export MEMRA_API_KEY="test-secret-for-development"
 
 ## 4. Start the Demo Environment
 ```bash
-# Start PostgreSQL and MCP bridge
+# Start PostgreSQL and MCP bridge (from memra-ops)
+cd memra-ops
 docker compose up -d
+cd ..
 ```
 
 ## 5. Run the ETL Demo

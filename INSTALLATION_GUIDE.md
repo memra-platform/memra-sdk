@@ -22,7 +22,25 @@ The Memra SDK repository is **self-contained** and includes everything needed to
 - **`docs/`** - Database schema and sample data
 - **`examples/`** - Additional workflow examples
 
-**Note**: The SDK repo includes all necessary components. You don't need access to private repositories to run the demos.
+**Note**: The SDK repo uses git submodules to provide access to infrastructure and workflow templates. The sparse checkout gives you minimal access to essential files only.
+
+### 🔧 Submodule Access
+
+The SDK repository includes two submodules:
+- **memra-ops/**: Infrastructure files (Docker Compose, MCP bridge server)
+- **memra-workflows/**: Production workflow templates
+
+**Sparse Checkout Benefits:**
+- Downloads only essential files (< 1MB total)
+- Maintains expected directory structure
+- Provides access to ETL demo and basic workflows
+- Keeps private repository content secure
+
+**To get full access to all files:**
+```bash
+git -C memra-ops sparse-checkout disable
+git -C memra-workflows sparse-checkout disable
+```
 
 ## 📋 Prerequisites
 
@@ -66,17 +84,24 @@ docker ps
 ### Step 2: Clone the Repository
 
 ```bash
-# Clone the Memra repository
-git clone https://github.com/memra-platform/memra-sdk.git
+# Clone the Memra repository with submodules
+git clone --recurse-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
 
 # Navigate to the project directory
 cd memra-sdk
+
+# Setup sparse checkout for minimal download (optional)
+bash scripts/setup_submodules.sh
 
 # Verify you're in the right place
 ls -la
 ```
 
-You should see files like `README.md`, `setup.py`, `memra/`, etc.
+You should see files like `README.md`, `setup.py`, `memra/`, `memra-ops/`, and `memra-workflows/`.
+
+**Note:** The submodules provide:
+- **memra-ops/**: Docker Compose files and MCP bridge server
+- **memra-workflows/**: Production workflow templates
 
 ### Step 3: Install Memra SDK
 
@@ -96,9 +121,12 @@ python3 -c "import memra; print('Memra installed successfully!')"
 
 ### Step 4: Set Up PostgreSQL Database
 
-We'll use Docker Compose to run PostgreSQL (included in the SDK repo):
+We'll use Docker Compose from the memra-ops submodule:
 
 ```bash
+# Navigate to memra-ops directory
+cd memra-ops
+
 # Start PostgreSQL using Docker Compose
 docker compose up -d postgres
 
@@ -107,6 +135,9 @@ sleep 5
 
 # Verify PostgreSQL is running
 docker ps | grep memra-postgres
+
+# Return to main directory
+cd ..
 ```
 
 ### Step 5: Database Schema (Auto-Configured)
@@ -156,7 +187,8 @@ echo 'export DATABASE_URL="postgresql://memra:memra123@localhost:5432/memra_invo
 The MCP bridge server provides tools for the ETL workflow:
 
 ```bash
-# Start the MCP bridge server (included in SDK repo)
+# Start the MCP bridge server (from memra-ops)
+cd memra-ops
 python3 mcp_bridge_server.py &
 
 # Wait for the server to start
@@ -164,6 +196,9 @@ sleep 3
 
 # Verify the server is running
 curl -s http://localhost:8081/health
+
+# Return to main directory
+cd ..
 ```
 
 You should see a response indicating the server is healthy.

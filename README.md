@@ -34,6 +34,8 @@ pip install memra
 bash scripts/setup_newbie.sh
 ```
 
+**🔧 Repository Structure:** This repo uses git submodules with sparse checkout to provide minimal access to infrastructure and workflow templates while keeping private content secure.
+
 ### Basic Example
 
 ```python
