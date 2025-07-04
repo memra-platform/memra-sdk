@@ -15,33 +15,18 @@ python -m pip install --upgrade pip
 pip install memra
 ```
 
-## 2. Clone the Repository (with Submodules)
+## 2. Run the ETL Demo
 ```bash
-# Clone with submodules for full functionality (shallow for minimal download)
-git clone --recurse-submodules --shallow-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
-cd memra-sdk
-
-# Setup sparse checkout for minimal download (optional)
-bash scripts/setup_submodules.sh
+# That's it! Just run the demo command
+memra demo
 ```
 
-## 3. Set Your API Key
-```bash
-export MEMRA_API_KEY="test-secret-for-development"
-```
-
-## 4. Start the Demo Environment
-```bash
-# Start PostgreSQL and MCP bridge (from memra-ops)
-cd memra-ops
-docker compose up -d
-cd ..
-```
-
-## 5. Run the ETL Demo
-```bash
-python demos/etl_invoice_processing/etl_invoice_demo.py
-```
+**What happens automatically:**
+- ✅ Extracts bundled demo files
+- ✅ Sets environment variables (API key, database URL)
+- ✅ Starts Docker containers (PostgreSQL, MCP bridge)
+- ✅ Runs the ETL workflow
+- ✅ Shows results and next steps
 
 ## 🎯 That's It!
 
@@ -82,9 +67,9 @@ You should see output like:
 
 ## 🛠️ Next Steps
 
-- **Explore examples:** `python examples/accounts_payable_client.py`
-- **Check database:** `docker exec -it memra_postgres psql -U memra -d memra_invoice_db`
-- **Stop services:** `docker compose down`
+- **Explore examples:** Check out the extracted demo files in `~/.memra/demo/`
+- **Check database:** `docker exec -it memra_postgres psql -U postgres -d local_workflow`
+- **Stop services:** `cd ~/.memra/demo/memra-ops && docker compose down`
 
 ## 🆘 Need Help?
 
