@@ -27,6 +27,13 @@ Building AI-powered business workflows is hard. You need to:
 pip install memra
 ```
 
+**📖 New to Memra?** For a complete beginner-friendly setup with step-by-step instructions, see our [Detailed Installation Guide](INSTALLATION_GUIDE.md) or run our automated setup script:
+
+```bash
+# Automated setup for new users
+bash scripts/setup_newbie.sh
+```
+
 ### Basic Example
 
 ```python
@@ -193,6 +200,7 @@ Scale from prototype to production:
 ## 📚 Documentation
 
 - **[Quick Start Guide](QUICK_START.md)** - Get up and running in 5 minutes
+- **[Detailed Installation Guide](INSTALLATION_GUIDE.md)** - Complete beginner-friendly setup instructions
 - **[System Architecture](memra_system_architecture.md)** - Deep dive into Memra's design
 - **[Text-to-SQL Guide](TEXT_TO_SQL_USAGE_GUIDE.md)** - Building database query workflows
 - **[Examples Directory](examples/)** - Complete working examples

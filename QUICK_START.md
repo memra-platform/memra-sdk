@@ -2,6 +2,8 @@
 
 Get up and running with Memra in **5 minutes**!
 
+> **💡 New to Memra?** If you need more detailed setup instructions or run into issues, check out our [Detailed Installation Guide](INSTALLATION_GUIDE.md) or use our automated setup script: `bash scripts/setup_newbie.sh`
+
 ## 1. Install Memra SDK
 ```bash
 pip install memra
@@ -15,16 +17,13 @@ cd memra-sdk
 
 ## 3. Set Your API Key
 ```bash
-export MEMRA_API_KEY="your-api-key-here"
+export MEMRA_API_KEY="test-secret-for-development"
 ```
 
 ## 4. Start the Demo Environment
 ```bash
 # Start PostgreSQL and MCP bridge
-docker-compose up -d
-
-# Or use the startup script
-python scripts/start_memra.py
+docker compose up -d
 ```
 
 ## 5. Run the ETL Demo
@@ -78,7 +77,8 @@ You should see output like:
 ## 🆘 Need Help?
 
 - **Docker not running?** Start Docker Desktop
-- **API key issues?** Get your key from [memra.co](https://memra.co)
+- **API key issues?** Use `test-secret-for-development` for local demos
+- **Setup problems?** See our [Detailed Installation Guide](INSTALLATION_GUIDE.md)
 - **More details:** See `TEAM_SETUP.md` and `demos/README.md`
 
 ---
