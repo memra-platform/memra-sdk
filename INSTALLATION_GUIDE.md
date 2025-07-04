@@ -13,12 +13,12 @@ By the end of this guide, you'll have:
 
 ## 📋 Repository Structure
 
-The Memra SDK repository is **self-contained** and includes everything needed to run the ETL demo:
+The Memra SDK repository includes everything needed to run the ETL demo:
 
 - **`memra/`** - Core SDK library
 - **`demos/etl_invoice_processing/`** - Complete ETL workflow demo
-- **`docker-compose.yml`** - PostgreSQL and MCP bridge setup
-- **`mcp_bridge_server.py`** - Local MCP tool server
+- **`memra-ops/`** - Infrastructure files (Docker Compose, MCP bridge server)
+- **`memra-workflows/`** - Production workflow templates
 - **`docs/`** - Database schema and sample data
 - **`examples/`** - Additional workflow examples
 
@@ -84,8 +84,8 @@ docker ps
 ### Step 2: Clone the Repository
 
 ```bash
-# Clone the Memra repository with submodules
-git clone --recurse-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
+# Clone the Memra repository with submodules (shallow for minimal download)
+git clone --recurse-submodules --shallow-submodules --depth 1 https://github.com/memra-platform/memra-sdk.git
 
 # Navigate to the project directory
 cd memra-sdk
@@ -152,10 +152,10 @@ You can verify the schema was created:
 
 ```bash
 # Check if the table exists
-psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "\dt"
+psql -h localhost -p 5432 -U postgres -d local_workflow -c "\dt"
 
 # View the table structure
-psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "\d invoices"
+psql -h localhost -p 5432 -U postgres -d local_workflow -c "\d invoices"
 ```
 
 ### Step 6: Install Additional Dependencies
@@ -175,11 +175,11 @@ pip install build twine
 export MEMRA_API_KEY="test-secret-for-development"
 
 # Set database connection
-export DATABASE_URL="postgresql://memra:memra123@localhost:5432/memra_invoice_db"
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/local_workflow"
 
 # Add to your shell profile (optional, for persistence)
 echo 'export MEMRA_API_KEY="test-secret-for-development"' >> ~/.bashrc
-echo 'export DATABASE_URL="postgresql://memra:memra123@localhost:5432/memra_invoice_db"' >> ~/.bashrc
+echo 'export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/local_workflow"' >> ~/.bashrc
 ```
 
 ### Step 8: Start the MCP Bridge Server
@@ -242,7 +242,7 @@ python3 etl_invoice_demo.py
 
 ```bash
 # Check the database for processed invoices
-psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "
+psql -h localhost -p 5432 -U postgres -d local_workflow -c "
 SELECT 
     id,
     invoice_number,
@@ -251,13 +251,13 @@ SELECT
     total_amount,
     status,
     created_at
-FROM invoice_flat_view
+FROM invoices
 ORDER BY created_at DESC
 LIMIT 10;
 "
 
 # Check the raw JSON data
-psql -h localhost -p 5432 -U memra -d memra_invoice_db -c "
+psql -h localhost -p 5432 -U postgres -d local_workflow -c "
 SELECT 
     id,
     raw_json->'billingDetails'->>'invoiceNumber' as invoice_number,
@@ -311,10 +311,10 @@ sudo pip install ...
 ```
 
 #### 5. Port Conflicts
-If port 5433 or 8081 is already in use:
+If port 5432 or 8081 is already in use:
 ```bash
 # Find what's using the port
-lsof -i :5433
+lsof -i :5432
 lsof -i :8081
 
 # Kill the process or use different ports
@@ -332,20 +332,19 @@ lsof -i :8081
 
 ### Database Tables
 
-- **`invoices`**: Main table with all invoice data
-- **`invoice_flat_view`**: View for easy querying of structured data
+- **`invoices`**: Main table with all invoice data (includes structured columns and raw JSON)
 
 ### Sample Queries
 
 ```sql
 -- View all processed invoices
-SELECT * FROM invoice_flat_view ORDER BY created_at DESC;
+SELECT * FROM invoices ORDER BY created_at DESC;
 
 -- Find invoices by vendor
-SELECT * FROM invoice_flat_view WHERE vendor_name LIKE '%Propane%';
+SELECT * FROM invoices WHERE vendor_name LIKE '%Propane%';
 
 -- Check processing status
-SELECT status, COUNT(*) FROM invoice_flat_view GROUP BY status;
+SELECT status, COUNT(*) FROM invoices GROUP BY status;
 
 -- View raw JSON data
 SELECT raw_json FROM invoices WHERE id = 1;
@@ -359,12 +358,12 @@ When you're done testing:
 # Stop the MCP bridge server
 pkill -f mcp_bridge_server.py
 
-# Stop and remove PostgreSQL container
-docker stop memra-postgres
-docker rm memra-postgres
+# Stop and remove containers
+cd memra-ops
+docker compose down
 
-# Remove the Docker network
-docker network rm memra-network
+# Return to main directory
+cd ..
 
 # Uninstall Memra (optional)
 pip uninstall memra
