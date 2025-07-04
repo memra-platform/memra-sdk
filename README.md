@@ -256,10 +256,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Documentation**: [docs.memra.co](https://docs.memra.co)
 - **Issues**: [GitHub Issues](https://github.com/memra-platform/memra-sdk/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/memra-platform/memra-sdk/discussions)
-- **Email**: support@memra.com
+- **Email**: hello@memra.com
 
 ## 🔗 Related Projects
 
@@ -268,4 +267,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by the Memra team** 
+**Built with ❤️ by the memra team** 
