@@ -351,9 +351,23 @@ def wait_for_services():
     """Wait for services to be ready"""
     print("⏳ Waiting for PostgreSQL to be ready...")
     
-    # Wait for PostgreSQL
+    # Wait for PostgreSQL - try both possible container names
     for i in range(30):  # Wait up to 30 seconds
         try:
+            # Try the memra-ops container name first
+            result = subprocess.run([
+                'docker', 'exec', 'memra-ops_postgres_1', 
+                'pg_isready', '-U', 'postgres', '-d', 'local_workflow'
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print("✅ PostgreSQL is ready")
+                break
+        except:
+            pass
+        
+        try:
+            # Fallback to the old container name
             result = subprocess.run([
                 'docker', 'exec', 'memra_postgres', 
                 'pg_isready', '-U', 'postgres', '-d', 'local_workflow'
