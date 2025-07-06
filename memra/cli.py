@@ -24,6 +24,9 @@ def run_demo():
     print("🔧 Configuring environment...")
     setup_environment()
     
+    # Step 2.5: Install dependencies
+    install_dependencies()
+    
     # Step 3: Start Docker containers
     print("🐳 Starting Docker services...")
     if not start_docker_services(demo_dir):
@@ -279,6 +282,38 @@ def setup_environment():
     os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/local_workflow'
     print("✅ Set DATABASE_URL")
 
+def install_dependencies():
+    """Install required dependencies for the demo"""
+    try:
+        print("📦 Installing demo dependencies...")
+        dependencies = [
+            'requests==2.31.0',
+            'fastapi==0.104.1',
+            'uvicorn[standard]==0.24.0',
+            'pydantic==2.5.0',
+            'aiohttp',
+            'psycopg2-binary',
+            'httpx',
+            'huggingface_hub'
+        ]
+        
+        for dep in dependencies:
+            print(f"   Installing {dep}...")
+            result = subprocess.run([
+                sys.executable, '-m', 'pip', 'install', dep
+            ], capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"⚠️  Warning: Failed to install {dep}: {result.stderr}")
+            else:
+                print(f"   ✅ {dep} installed")
+        
+        print("✅ Dependencies installed")
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not install dependencies: {e}")
+        print("   You may need to install them manually: pip install requests fastapi uvicorn pydantic")
+
 def start_docker_services(demo_dir):
     """Start Docker containers using docker-compose"""
     try:
@@ -343,7 +378,8 @@ def run_etl_workflow(demo_dir):
         real_demo_script = demo_dir / "etl_invoice_demo.py"
         if real_demo_script.exists():
             print("🎯 Running real ETL workflow...")
-            result = subprocess.run([sys.executable, str(real_demo_script)], cwd=demo_dir)
+            print("⏱️  Processing 15 files with delays - this may take 10-15 minutes")
+            result = subprocess.run([sys.executable, str(real_demo_script)], cwd=demo_dir, timeout=1800)  # 30 minute timeout
             return result.returncode == 0
         else:
             # Fallback to simplified demo
@@ -356,6 +392,10 @@ def run_etl_workflow(demo_dir):
                 print("❌ No demo script found")
                 return False
             
+    except subprocess.TimeoutExpired:
+        print("⏰ ETL workflow timed out after 30 minutes")
+        print("This is normal for large batches - the demo processes 15 files with delays")
+        return False
     except Exception as e:
         print(f"❌ Error running ETL workflow: {e}")
         return False

@@ -6,6 +6,8 @@ Complete ETL workflow with database monitoring before and after
 
 import os
 import sys
+import time
+import random
 from pathlib import Path
 from memra import Agent, Department, LLM, check_api_health, get_api_status
 from memra.execution import ExecutionEngine, ExecutionTrace
@@ -34,6 +36,35 @@ os.environ["MEMRA_API_URL"] = "https://api.memra.co"
 
 # Store the remote API URL for PDF processing
 REMOTE_API_URL = "https://api.memra.co"
+
+# Define the specific 15 files to process
+TARGET_FILES = [
+    "10352259401.PDF",
+    "10352259823.PDF", 
+    "10352260169.PDF",
+    "10352260417.PDF",
+    "10352260599.PDF",
+    "10352260912.PDF",
+    "10352261134.PDF",
+    "10352261563.PDF",
+    "10352261647.PDF",
+    "10352261720.PDF",
+    "10352261811.PDF",
+    "10352262025.PDF",
+    "10352262454.PDF",
+    "10352262702.PDF",
+    "10352262884.PDF"
+]
+
+# Configuration for robust processing
+PROCESSING_CONFIG = {
+    "delay_between_files": 2.5,  # seconds
+    "max_retries": 3,
+    "retry_delay_base": 2,  # seconds
+    "retry_delay_max": 30,  # seconds
+    "timeout_seconds": 120,
+    "rate_limit_delay": 5  # additional delay if rate limited
+}
 
 # Check API health before starting
 print("🔍 Checking Memra API status...")
@@ -409,7 +440,7 @@ def fix_pdfprocessor_response(agent, result_data, **kwargs):
         return result_data
 
 def direct_vision_processing(agent, result_data, **kwargs):
-    """Direct vision model processing without using tools"""
+    """Direct vision model processing without using tools with retry logic"""
     print(f"\n[DEBUG] direct_vision_processing called for {agent.role}")
     print(f"[DEBUG] Result data type: {type(result_data)}")
     print(f"[DEBUG] Result data: {result_data}")
@@ -430,170 +461,214 @@ def direct_vision_processing(agent, result_data, **kwargs):
         print("❌ No file path provided")
         return result_data
     
-    try:
-        import requests
-        import json
-        import os
-        import base64
-        
-        # Use the remote API for PDF processing
-        api_url = "https://api.memra.co"
-        api_key = os.getenv("MEMRA_API_KEY", "test-secret-for-development")
-        
-        # Check if file is already a remote path
-        if file_path.startswith('/uploads/'):
-            print(f"✅ File already uploaded to remote API: {file_path}")
-            remote_path = file_path
-        else:
-            # Local file - need to upload
-            print(f"📤 Uploading file to remote API...")
+    # Retry logic for vision processing
+    for attempt in range(PROCESSING_CONFIG["max_retries"] + 1):
+        try:
+            import requests
+            import json
+            import os
+            import base64
             
-            # Read the file and encode as base64
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-        
-            file_b64 = base64.b64encode(file_content).decode('utf-8')
+            # Use the remote API for PDF processing
+            api_url = "https://api.memra.co"
+            api_key = os.getenv("MEMRA_API_KEY", "test-secret-for-development")
             
-            # Prepare upload data
-            upload_data = {
-                "filename": os.path.basename(file_path),
-                "content": file_b64,
-                "content_type": "application/pdf"
-            }
+            # Check if file is already a remote path
+            if file_path.startswith('/uploads/'):
+                print(f"✅ File already uploaded to remote API: {file_path}")
+                remote_path = file_path
+            else:
+                # Local file - need to upload
+                print(f"📤 Uploading file to remote API (attempt {attempt + 1})...")
+                
+                # Read the file and encode as base64
+                with open(file_path, 'rb') as f:
+                    file_content = f.read()
             
-            # Upload to remote API
+                file_b64 = base64.b64encode(file_content).decode('utf-8')
+                
+                # Prepare upload data
+                upload_data = {
+                    "filename": os.path.basename(file_path),
+                    "content": file_b64,
+                    "content_type": "application/pdf"
+                }
+                
+                # Upload to remote API with timeout
+                response = requests.post(
+                    f"{api_url}/upload",
+                    json=upload_data,
+                    headers={
+                        "X-API-Key": api_key,
+                        "Content-Type": "application/json"
+                    },
+                    timeout=PROCESSING_CONFIG["timeout_seconds"]
+                )
+                
+                if response.status_code != 200:
+                    print(f"❌ Upload failed: {response.status_code}")
+                    print(f"   Response: {response.text}")
+                    
+                    # Check for rate limiting
+                    if response.status_code == 429:
+                        delay = PROCESSING_CONFIG["rate_limit_delay"] * (2 ** attempt)
+                        print(f"⏳ Rate limited, waiting {delay}s before retry...")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        return result_data
+                
+                upload_result = response.json()
+                if not upload_result.get("success"):
+                    print(f"❌ Upload failed: {upload_result.get('error')}")
+                    return result_data
+                
+                remote_path = upload_result["data"]["remote_path"]
+                print(f"✅ File uploaded successfully")
+                print(f"   Remote path: {remote_path}")
+            
+            # Now call the PDFProcessor with the remote path
+            print(f"🔍 Calling PDFProcessor with remote path (attempt {attempt + 1})...")
+            
+            # Convert schema to format expected by PDFProcessor
+            schema_for_pdf = None
+            if schema_results:
+                # Send the raw schema array - server now handles both formats
+                schema_for_pdf = [
+                    col for col in schema_results
+                    if col["column_name"] not in ["id", "created_at", "updated_at", "status", "raw_json"]
+                ]
+                print(f"📋 Passing schema with {len(schema_for_pdf)} fields to PDFProcessor")
+                print(f"📋 Schema fields: {[c['column_name'] for c in schema_for_pdf]}")
+            
             response = requests.post(
-                f"{api_url}/upload",
-                json=upload_data,
+                f"{api_url}/tools/execute",
+                json={
+                    "tool_name": "PDFProcessor",
+                    "hosted_by": "memra",
+                    "input_data": {
+                        "file": remote_path,
+                        "schema": schema_for_pdf
+                    }
+                },
                 headers={
                     "X-API-Key": api_key,
                     "Content-Type": "application/json"
-                }
+                },
+                timeout=PROCESSING_CONFIG["timeout_seconds"]
             )
             
             if response.status_code != 200:
-                print(f"❌ Upload failed: {response.status_code}")
+                print(f"❌ PDFProcessor call failed: {response.status_code}")
                 print(f"   Response: {response.text}")
-                return result_data
+                
+                # Check for rate limiting
+                if response.status_code == 429:
+                    delay = PROCESSING_CONFIG["rate_limit_delay"] * (2 ** attempt)
+                    print(f"⏳ Rate limited, waiting {delay}s before retry...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    return result_data
             
-            upload_result = response.json()
-            if not upload_result.get("success"):
-                print(f"❌ Upload failed: {upload_result.get('error')}")
-                return result_data
-            
-            remote_path = upload_result["data"]["remote_path"]
-            print(f"✅ File uploaded successfully")
-            print(f"   Remote path: {remote_path}")
-        
-        # Now call the PDFProcessor with the remote path
-        print(f"🔍 Calling PDFProcessor with remote path...")
-        
-        # Convert schema to format expected by PDFProcessor
-        schema_for_pdf = None
-        if schema_results:
-            # Send the raw schema array - server now handles both formats
-            schema_for_pdf = [
-                col for col in schema_results
-                if col["column_name"] not in ["id", "created_at", "updated_at", "status", "raw_json"]
-            ]
-            print(f"📋 Passing schema with {len(schema_for_pdf)} fields to PDFProcessor")
-            print(f"📋 Schema fields: {[c['column_name'] for c in schema_for_pdf]}")
-        
-        response = requests.post(
-            f"{api_url}/tools/execute",
-            json={
-                "tool_name": "PDFProcessor",
-                "hosted_by": "memra",
-                "input_data": {
-                    "file": remote_path,
-                    "schema": schema_for_pdf
-                }
-            },
-            headers={
-                "X-API-Key": api_key,
-                "Content-Type": "application/json"
-            }
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ PDFProcessor call failed: {response.status_code}")
-            print(f"   Response: {response.text}")
-            return result_data
-        
-        pdf_result = response.json()
-        print(f"\n🎯 AGENT 3 - FULL PDFPROCESSOR RESPONSE:")
-        print("=" * 60)
-        print(json.dumps(pdf_result, indent=2, default=str))
-        print("=" * 60)
-        
-        # Extract the vision response from the nested structure
-        vision_response = None
-        if pdf_result.get("success") and "data" in pdf_result:
-            data = pdf_result["data"]
-            
-            # Check for nested data structure
-            if isinstance(data, dict) and "data" in data:
-                actual_data = data["data"]
-                if "vision_response" in actual_data:
-                    vision_response = actual_data["vision_response"]
-            elif "vision_response" in data:
-                vision_response = data["vision_response"]
-        
-        if vision_response:
-            print(f"\n🎯 AGENT 3 - RAW VISION MODEL JSON:")
+            pdf_result = response.json()
+            print(f"\n🎯 AGENT 3 - FULL PDFPROCESSOR RESPONSE:")
             print("=" * 60)
-            print(vision_response)
+            print(json.dumps(pdf_result, indent=2, default=str))
             print("=" * 60)
             
-            # Try to parse the JSON response
-            try:
-                # Clean up the response - remove markdown code blocks if present
-                cleaned_response = vision_response
-                if cleaned_response.startswith("```json"):
-                    cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
-                elif cleaned_response.startswith("```"):
-                    cleaned_response = cleaned_response.replace("```", "").strip()
+            # Extract the vision response from the nested structure
+            vision_response = None
+            if pdf_result.get("success") and "data" in pdf_result:
+                data = pdf_result["data"]
                 
-                parsed_data = json.loads(cleaned_response)
-                print(f"\n✅ [AGENT 3] Successfully parsed JSON:")
-                print(json.dumps(parsed_data, indent=2))
+                # Check for nested data structure
+                if isinstance(data, dict) and "data" in data:
+                    actual_data = data["data"]
+                    if "vision_response" in actual_data:
+                        vision_response = actual_data["vision_response"]
+                elif "vision_response" in data:
+                    vision_response = data["vision_response"]
+            
+            if vision_response:
+                print(f"\n🎯 AGENT 3 - RAW VISION MODEL JSON:")
+                print("=" * 60)
+                print(vision_response)
+                print("=" * 60)
                 
-                # Convert to the expected format
-                extracted_data = convert_vision_response_to_extracted_data(cleaned_response)
-                
-                # Debug vendor extraction
-                print(f"\n🔍 [AGENT 3] Extracted vendor: '{extracted_data['headerSection']['vendorName']}'")
-                print(f"   Invoice #: {extracted_data['billingDetails']['invoiceNumber']}")
-                print(f"   Amount: ${extracted_data['chargesSummary']['document_total']}")
-                
-                # Update the result_data
-                result_data = {
-                    "success": True,
-                    "data": {
-                        "vision_response": vision_response,
-                        "extracted_data": extracted_data
-                    },
-                    "_memra_metadata": {
-                        "agent_role": agent.role,
-                        "tools_real_work": ["PDFProcessor"],
-                        "tools_mock_work": [],
-                        "work_quality": "real"
+                # Try to parse the JSON response
+                try:
+                    # Clean up the response - remove markdown code blocks if present
+                    cleaned_response = vision_response
+                    if cleaned_response.startswith("```json"):
+                        cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
+                    elif cleaned_response.startswith("```"):
+                        cleaned_response = cleaned_response.replace("```", "").strip()
+                    
+                    parsed_data = json.loads(cleaned_response)
+                    print(f"\n✅ [AGENT 3] Successfully parsed JSON:")
+                    print(json.dumps(parsed_data, indent=2))
+                    
+                    # Convert to the expected format
+                    extracted_data = convert_vision_response_to_extracted_data(cleaned_response)
+                    
+                    # Debug vendor extraction
+                    print(f"\n🔍 [AGENT 3] Extracted vendor: '{extracted_data['headerSection']['vendorName']}'")
+                    print(f"   Invoice #: {extracted_data['billingDetails']['invoiceNumber']}")
+                    print(f"   Amount: ${extracted_data['chargesSummary']['document_total']}")
+                    
+                    # Update the result_data
+                    result_data = {
+                        "success": True,
+                        "data": {
+                            "vision_response": vision_response,
+                            "extracted_data": extracted_data
+                        },
+                        "_memra_metadata": {
+                            "agent_role": agent.role,
+                            "tools_real_work": ["PDFProcessor"],
+                            "tools_mock_work": [],
+                            "work_quality": "real"
+                        }
                     }
-                }
+                    
+                    return result_data
+                    
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSON parsing error: {e}")
+                    print(f"Raw response: {vision_response}")
+                    
+                    # Don't retry on JSON parsing errors
+                    return result_data
+            else:
+                print(f"❌ No vision_response found in PDFProcessor result")
                 
-                return result_data
-                
-            except json.JSONDecodeError as e:
-                print(f"❌ JSON parsing error: {e}")
-                print(f"Raw response: {vision_response}")
-                return result_data
-        else:
-            print(f"❌ No vision_response found in PDFProcessor result")
-            return result_data
-            
-    except Exception as e:
-        print(f"❌ Error in PDF processing: {e}")
-        return result_data
+                # Retry if no vision response (might be temporary API issue)
+                if attempt < PROCESSING_CONFIG["max_retries"]:
+                    delay = PROCESSING_CONFIG["retry_delay_base"] * (2 ** attempt)
+                    print(f"⏳ No vision response, waiting {delay}s before retry...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    return result_data
+                    
+        except requests.exceptions.Timeout:
+            print(f"⏰ Vision processing timeout (attempt {attempt + 1})")
+            if attempt < PROCESSING_CONFIG["max_retries"]:
+                delay = PROCESSING_CONFIG["retry_delay_base"] * (2 ** attempt)
+                print(f"⏳ Waiting {delay}s before retry...")
+                time.sleep(delay)
+            continue
+        except Exception as e:
+            print(f"❌ Error in PDF processing (attempt {attempt + 1}): {e}")
+            if attempt < PROCESSING_CONFIG["max_retries"]:
+                delay = PROCESSING_CONFIG["retry_delay_base"] * (2 ** attempt)
+                print(f"⏳ Waiting {delay}s before retry...")
+                time.sleep(delay)
+            continue
+    
+    print(f"❌ Failed to process vision after {PROCESSING_CONFIG['max_retries'] + 1} attempts")
+    return result_data
 
 # Create a new Agent 3 that bypasses the tool system
 direct_vision_agent = Agent(
@@ -792,54 +867,86 @@ etl_department = Department(
     }
 )
 
-def upload_file_to_api(file_path: str, api_url: str = "https://api.memra.co") -> str:
-    """Upload a file to the remote API for vision-based PDF processing"""
-    try:
-        print(f"📤 Uploading {os.path.basename(file_path)} to remote API")
-        print(f"   File path: {file_path}")
-        
-        # Read the file and encode as base64
-        with open(file_path, 'rb') as f:
-            file_content = f.read()
-        
-        file_b64 = base64.b64encode(file_content).decode('utf-8')
-        
-        # Prepare upload data
-        upload_data = {
-            "filename": os.path.basename(file_path),
-            "content": file_b64,
-            "content_type": "application/pdf"
-        }
-        
-        # Upload to remote API
-        api_key = os.getenv("MEMRA_API_KEY")
-        response = requests.post(
-            f"{api_url}/upload",
-            json=upload_data,
-            headers={
-                "X-API-Key": api_key,
-                "Content-Type": "application/json"
+def upload_file_to_api(file_path: str, api_url: str = "https://api.memra.co", max_retries: int = 3) -> str:
+    """Upload a file to the remote API for vision-based PDF processing with retry logic"""
+    
+    for attempt in range(max_retries + 1):
+        try:
+            print(f"📤 Uploading {os.path.basename(file_path)} to remote API (attempt {attempt + 1}/{max_retries + 1})")
+            print(f"   File path: {file_path}")
+            
+            # Read the file and encode as base64
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            file_b64 = base64.b64encode(file_content).decode('utf-8')
+            
+            # Prepare upload data
+            upload_data = {
+                "filename": os.path.basename(file_path),
+                "content": file_b64,
+                "content_type": "application/pdf"
             }
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("success"):
-                remote_path = result["data"]["remote_path"]
-                print(f"✅ File uploaded successfully")
-                print(f"   Remote path: {remote_path}")
-                return remote_path
+            
+            # Upload to remote API
+            api_key = os.getenv("MEMRA_API_KEY")
+            response = requests.post(
+                f"{api_url}/upload",
+                json=upload_data,
+                headers={
+                    "X-API-Key": api_key,
+                    "Content-Type": "application/json"
+                },
+                timeout=PROCESSING_CONFIG["timeout_seconds"]
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    remote_path = result["data"]["remote_path"]
+                    print(f"✅ File uploaded successfully")
+                    print(f"   Remote path: {remote_path}")
+                    return remote_path
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    print(f"❌ Upload failed: {error_msg}")
+                    
+                    # Check if it's a rate limit error
+                    if "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower():
+                        delay = PROCESSING_CONFIG["rate_limit_delay"] * (2 ** attempt)
+                        print(f"⏳ Rate limited, waiting {delay}s before retry...")
+                        time.sleep(delay)
+                        continue
+            elif response.status_code == 429:  # Rate limited
+                delay = PROCESSING_CONFIG["rate_limit_delay"] * (2 ** attempt)
+                print(f"⏳ Rate limited (HTTP 429), waiting {delay}s before retry...")
+                time.sleep(delay)
+                continue
             else:
-                print(f"❌ Upload failed: {result.get('error')}")
-                return file_path
-        else:
-            print(f"❌ Upload request failed: {response.status_code}")
-            print(f"   Response: {response.text}")
-            return file_path
+                print(f"❌ Upload request failed: {response.status_code}")
+                print(f"   Response: {response.text}")
                 
-    except Exception as e:
-        print(f"⚠️  Upload error: {e}")
-        return file_path
+                # Don't retry on client errors (4xx) except 429
+                if 400 <= response.status_code < 500 and response.status_code != 429:
+                    break
+                    
+        except requests.exceptions.Timeout:
+            print(f"⏰ Upload timeout (attempt {attempt + 1})")
+            if attempt < max_retries:
+                delay = PROCESSING_CONFIG["retry_delay_base"] * (2 ** attempt)
+                print(f"⏳ Waiting {delay}s before retry...")
+                time.sleep(delay)
+            continue
+        except Exception as e:
+            print(f"⚠️  Upload error (attempt {attempt + 1}): {e}")
+            if attempt < max_retries:
+                delay = PROCESSING_CONFIG["retry_delay_base"] * (2 ** attempt)
+                print(f"⏳ Waiting {delay}s before retry...")
+                time.sleep(delay)
+            continue
+    
+    print(f"❌ Failed to upload {os.path.basename(file_path)} after {max_retries + 1} attempts")
+    return file_path
 
 def print_vision_model_data(agent, tool_results):
     """Print out the JSON data returned by vision model tools"""
@@ -976,18 +1083,18 @@ def validate_agent_configuration(department):
     return True
 
 def main():
-    """Run the ETL demo workflow"""
+    """Run the ETL demo workflow with robust processing"""
     print("\n🚀 Starting ETL Invoice Processing Demo...")
     print("📊 This demo includes comprehensive database monitoring")
     print("📡 Tools will execute on Memra API server")
-    print("📝 Note: Processing real PDF files from data/invoices/ directory")
-    print("   The remote API will take photos of PDF pages and process with vision model")
+    print("📝 Processing 15 specific invoice files with robust error handling")
+    print("⏱️  Includes delays between files and retry logic for API resilience")
+    print("🎯 Target files:", ", ".join(TARGET_FILES))
 
-    # Configuration - Make these configurable via environment variables or config file
+    # Configuration
     config = {
         "table_name": os.getenv("MEMRA_TABLE_NAME", "invoices"),
         "data_directory": os.getenv("MEMRA_DATA_DIR", "data/invoices"),
-        "file_patterns": ["*.PDF", "*.pdf"],  # Could be env var: "*.PDF,*.pdf"
         "company_id": os.getenv("MEMRA_COMPANY_ID", "acme_corp"),
         "fiscal_year": os.getenv("MEMRA_FISCAL_YEAR", "2024"),
         "database_url": os.getenv("MEMRA_DATABASE_URL", "postgresql://memra:memra123@localhost:5432/memra_invoice_db")
@@ -1008,71 +1115,119 @@ def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(current_dir, config["data_directory"])
     
-    # Use configurable file patterns
+    # Find only the target files
     invoice_files = []
-    for pattern in config["file_patterns"]:
-        invoice_files.extend(glob.glob(os.path.join(data_dir, pattern)))
+    missing_files = []
+    
+    for target_file in TARGET_FILES:
+        file_path = os.path.join(data_dir, target_file)
+        if os.path.exists(file_path):
+            invoice_files.append(file_path)
+        else:
+            missing_files.append(target_file)
+    
+    if missing_files:
+        print(f"⚠️  Missing files: {', '.join(missing_files)}")
     
     if not invoice_files:
-        print(f"⚠️  No PDF files found in {config['data_directory']}/ directory")
-        print("📝 Demo will use mock data")
-        invoice_files = [os.path.join(data_dir, "sample_invoice.pdf")]
+        print(f"❌ No target files found in {config['data_directory']}/ directory")
+        print("📝 Available files:")
+        available_files = glob.glob(os.path.join(data_dir, "*.PDF"))
+        for file in available_files[:10]:  # Show first 10
+            print(f"   - {os.path.basename(file)}")
+        if len(available_files) > 10:
+            print(f"   ... and {len(available_files) - 10} more")
+        sys.exit(1)
 
-    batch_mode = False
+    print(f"\n📁 Found {len(invoice_files)} target files to process")
+    print(f"⏱️  Estimated processing time: {len(invoice_files) * PROCESSING_CONFIG['delay_between_files']:.1f} seconds (plus processing time)")
+    
+    # Process files with robust error handling
+    successful_processing = 0
+    failed_processing = 0
+    skipped_processing = 0
+    
     for idx, invoice_file in enumerate(invoice_files):
-        if not batch_mode:
-            print(f"\n📄 Next invoice: {os.path.basename(invoice_file)}")
-            user_input = input("Process this document? (Y/n) or process all remaining in batch mode? (B): ").strip().lower()
-            if user_input == 'b':
-                batch_mode = True
-            elif user_input == 'n':
-                print(f"⏭️  Skipping {os.path.basename(invoice_file)}")
+        filename = os.path.basename(invoice_file)
+        print(f"\n{'='*60}")
+        print(f"📄 Processing file {idx + 1}/{len(invoice_files)}: {filename}")
+        print(f"{'='*60}")
+        
+        # Add delay between files (except for the first one)
+        if idx > 0:
+            delay = PROCESSING_CONFIG["delay_between_files"] + random.uniform(0, 1)  # Add some randomness
+            print(f"⏳ Waiting {delay:.1f}s between files...")
+            time.sleep(delay)
+        
+        try:
+            # Upload file with retry logic
+            remote_file_path = upload_file_to_api(invoice_file, max_retries=PROCESSING_CONFIG["max_retries"])
+            
+            if remote_file_path == invoice_file:
+                print(f"❌ Failed to upload {filename}, skipping...")
+                failed_processing += 1
                 continue
-        print(f"\n🚀 Processing: {os.path.basename(invoice_file)}")
-        remote_file_path = upload_file_to_api(invoice_file)
 
-        # Run the full ETL workflow with configurable parameters
-        input_data = {
-            "file": remote_file_path,
-            "connection": config["database_url"],
-            "table_name": config["table_name"],
-            "sql_query": schema_query
-        }
-        result = engine.execute_department(etl_department, input_data)
-        if result.success:
-            print("\n✅ ETL process completed successfully!")
-            if 'etl_summary' in result.data:
-                summary = result.data['etl_summary']
-                print(f"\n📋 ETL Summary Report:")
-                print(f"Status: {summary.get('status', 'unknown')}")
-                print(f"Summary: {summary.get('summary', 'No summary available')}")
-                if 'monitoring_comparison' in summary:
-                    comparison = summary['monitoring_comparison']
-                    print(f"\n📊 Database State Comparison:")
-                    print(f"Pre-ETL Rows: {comparison.get('pre_rows', 'N/A')}")
-                    print(f"Post-ETL Rows: {comparison.get('post_rows', 'N/A')}")
-                    print(f"New Records: {comparison.get('new_records', 'N/A')}")
-                    print(f"Data Quality: {comparison.get('data_quality', 'N/A')}")
-            else:
-                print("\n📋 ETL Summary Report:")
-                print("Status: success")
-                print("Summary: ETL process completed with database monitoring")
-                if 'invoice_data' in result.data:
-                    invoice_data = result.data['invoice_data']
-                    if isinstance(invoice_data, dict) and 'headerSection' in invoice_data:
-                        vendor = invoice_data['headerSection'].get('vendorName', 'Unknown')
-                        amount = invoice_data.get('totalAmount', 'Unknown')
-                        print(f" Processed Invoice: {vendor} - ${amount}")
+            # Run the full ETL workflow with configurable parameters
+            input_data = {
+                "file": remote_file_path,
+                "connection": config["database_url"],
+                "table_name": config["table_name"],
+                "sql_query": schema_query
+            }
+            
+            result = engine.execute_department(etl_department, input_data)
+            
+            if result.success:
+                successful_processing += 1
+                print(f"\n✅ Successfully processed: {filename}")
+                
+                # Show summary if available
+                if 'etl_summary' in result.data:
+                    summary = result.data['etl_summary']
+                    print(f"📋 Status: {summary.get('status', 'success')}")
                 if 'write_confirmation' in result.data:
                     write_conf = result.data['write_confirmation']
                     if isinstance(write_conf, dict) and 'record_id' in write_conf:
-                        print(f"💾 Database Record: ID {write_conf['record_id']}")
-        else:
-            print(f"\n❌ ETL process failed: {result.error}")
-            if result.trace and result.trace.errors:
-                print("🔍 Error details:")
-                for error in result.trace.errors:
-                    print(f"  - {error}")
+                        print(f"💾 Database Record ID: {write_conf['record_id']}")
+            else:
+                failed_processing += 1
+                print(f"\n❌ Failed to process: {filename}")
+                print(f"   Error: {result.error}")
+                if result.trace and result.trace.errors:
+                    print("   Details:")
+                    for error in result.trace.errors:
+                        print(f"     - {error}")
+                
+        except Exception as e:
+            failed_processing += 1
+            print(f"\n💥 Unexpected error processing {filename}: {e}")
+            print("   Continuing with next file...")
+            continue
+    
+    # Final summary
+    print(f"\n{'='*60}")
+    print(f"🎯 ETL DEMO COMPLETED")
+    print(f"{'='*60}")
+    print(f"📊 Processing Summary:")
+    print(f"   ✅ Successful: {successful_processing}")
+    print(f"   ❌ Failed: {failed_processing}")
+    print(f"   ⏭️  Skipped: {skipped_processing}")
+    print(f"   📄 Total: {len(invoice_files)}")
+    
+    if successful_processing > 0:
+        print(f"\n🎉 Demo completed successfully!")
+        print(f"   Processed {successful_processing} invoices with robust error handling")
+        print(f"   This demonstrates real-world API resilience and rate limiting")
+    else:
+        print(f"\n⚠️  No files were processed successfully")
+        print(f"   Check API connectivity and file availability")
+    
+    print(f"\n💡 This demo shows realistic production scenarios:")
+    print(f"   - API rate limiting and retry logic")
+    print(f"   - Graceful error handling and file skipping")
+    print(f"   - Delays between requests to avoid overwhelming APIs")
+    print(f"   - Exponential backoff for failed requests")
 
 if __name__ == "__main__":
     main() 
