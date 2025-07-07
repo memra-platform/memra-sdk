@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memra"
-version = "0.2.13"
+version = "0.2.14"
 description = "Declarative framework for enterprise workflows with MCP integration - Client SDK"
 readme = "README.md"
 license = {text = "MIT"}
@@ -50,8 +50,7 @@ Repository = "https://github.com/memra-platform/memra-sdk"
 memra = "memra.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["memra*"]
-exclude = ["logic*", "server*", "app*", "mcp_bridge*"]
+include = ["memra", "memra.*"]
 
 [tool.setuptools.package-data]
 memra = [
