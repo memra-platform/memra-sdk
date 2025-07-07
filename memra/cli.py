@@ -498,8 +498,32 @@ def run_etl_workflow(demo_dir):
         real_demo_script = demo_dir / "etl_invoice_demo.py"
         if real_demo_script.exists():
             print("🎯 Running real ETL workflow...")
+            print(f"📁 Working directory: {demo_dir}")
+            print(f"📄 Demo script: {real_demo_script}")
+            
+            # Check if data directory exists
+            data_dir = demo_dir / "data"
+            invoices_dir = data_dir / "invoices"
+            if invoices_dir.exists():
+                pdf_files = list(invoices_dir.glob("*.PDF"))
+                print(f"📊 Found {len(pdf_files)} PDF files in {invoices_dir}")
+                if pdf_files:
+                    print(f"   First few files: {[f.name for f in pdf_files[:3]]}")
+            else:
+                print(f"⚠️  Warning: {invoices_dir} does not exist")
+                print(f"   Available directories in {demo_dir}:")
+                for item in demo_dir.iterdir():
+                    if item.is_dir():
+                        print(f"     - {item.name}/")
+            
             print("⏱️  Processing 15 files with delays - this may take 10-15 minutes")
-            result = subprocess.run([sys.executable, str(real_demo_script)], cwd=demo_dir, timeout=1800)  # 30 minute timeout
+            
+            # Set the working directory to the demo directory so the script can find data/invoices/
+            result = subprocess.run(
+                [sys.executable, str(real_demo_script)], 
+                cwd=demo_dir,  # This is crucial - sets working directory
+                timeout=1800   # 30 minute timeout
+            )
             return result.returncode == 0
         else:
             # Fallback to simplified demo
@@ -510,6 +534,10 @@ def run_etl_workflow(demo_dir):
                 return result.returncode == 0
             else:
                 print("❌ No demo script found")
+                print(f"   Looking for: {real_demo_script}")
+                print(f"   Available files in {demo_dir}:")
+                for item in demo_dir.iterdir():
+                    print(f"     - {item.name}")
                 return False
             
     except subprocess.TimeoutExpired:
