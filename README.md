@@ -17,24 +17,26 @@ Building AI-powered business workflows is hard. You need to:
 
 **Memra solves these challenges** by providing a declarative framework that lets you focus on *what* you want to accomplish, not *how* to wire everything together.
 
-## 🚀 Quick Start (5 minutes!)
+## 🚀 Quick Start (2 minutes!)
 
-**Want to see Memra in action immediately?** Check out our [Quick Start Guide](QUICK_START.md) to run the ETL demo in minutes!
-
-### Installation
+**Want to see Memra in action immediately?**
 
 ```bash
+# Install Memra
 pip install memra
+
+# Run the ETL demo
+memra demo
 ```
 
-**📖 New to Memra?** For a complete beginner-friendly setup with step-by-step instructions, see our [Detailed Installation Guide](INSTALLATION_GUIDE.md) or run our automated setup script:
+**That's it!** The demo will automatically:
+- ✅ Set up PostgreSQL database
+- ✅ Start MCP bridge server
+- ✅ Process PDF invoices with AI vision
+- ✅ Store data in the database
+- ✅ Show you the results
 
-```bash
-# Automated setup for new users
-bash scripts/setup_newbie.sh
-```
-
-**🔧 Repository Structure:** This repo uses git submodules with sparse checkout to provide minimal access to infrastructure and workflow templates while keeping private content secure.
+**📖 Need more details?** Check out our [Quick Start Guide](QUICK_START.md) for step-by-step instructions.
 
 ### Basic Example
 
@@ -100,7 +102,7 @@ Configuration for language models used by agents, supporting:
 
 ```bash
 # Run the ETL demo
-python demos/etl_invoice_processing/etl_invoice_demo.py
+memra demo
 ```
 
 This demo showcases:
@@ -202,43 +204,19 @@ Scale from prototype to production:
 ## 📚 Documentation
 
 - **[Quick Start Guide](QUICK_START.md)** - Get up and running in 5 minutes
-- **[Detailed Installation Guide](INSTALLATION_GUIDE.md)** - Complete beginner-friendly setup instructions
+- **[Installation Guide](INSTALLATION_GUIDE.md)** - Detailed setup instructions
+- **[Text-to-SQL Guide](TEXT_TO_SQL_USAGE_GUIDE.md)** - Build SQL queries with natural language
+- **[Contributing](CONTRIBUTING.md)** - How to contribute to Memra
 - **[System Architecture](memra_system_architecture.md)** - Deep dive into Memra's design
-- **[Text-to-SQL Guide](TEXT_TO_SQL_USAGE_GUIDE.md)** - Building database query workflows
-- **[Examples Directory](examples/)** - Complete working examples
-- **[Demos Directory](demos/)** - Advanced workflow demonstrations
 
-## 🏢 Use Cases
+## 🔧 Development
 
-### Financial Services
-- **Invoice processing** and accounts payable automation
-- **Document classification** and routing
-- **Compliance monitoring** and reporting
-- **Risk assessment** and fraud detection
+### Prerequisites
+- Python 3.8+
+- Docker (for database and services)
+- Git
 
-### Healthcare
-- **Medical record processing** and data extraction
-- **Claims processing** and validation
-- **Patient data analysis** and insights
-- **Regulatory compliance** workflows
-
-### Manufacturing
-- **Quality control** and inspection workflows
-- **Supply chain** optimization and monitoring
-- **Equipment maintenance** scheduling
-- **Production planning** and optimization
-
-### Retail & E-commerce
-- **Order processing** and fulfillment
-- **Customer service** automation
-- **Inventory management** and forecasting
-- **Market analysis** and trend detection
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [contributing guide](CONTRIBUTING.md) for details.
-
-### Development Setup
+### Local Development Setup
 
 ```bash
 # Clone the repository
@@ -248,33 +226,34 @@ cd memra-sdk
 # Install in development mode
 pip install -e .
 
-# Run tests
-pytest tests/
+# Run the demo
+memra demo
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run specific test file
+python -m pytest tests/test_execution.py
 ```
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### MIT License Summary
-- ✅ **Commercial use** - Use in proprietary software
-- ✅ **Modification** - Modify and distribute
-- ✅ **Distribution** - Distribute copies
-- ✅ **Private use** - Use privately
-- ❌ **Liability** - No warranty provided
-- ❌ **Warranty** - No warranty provided
+## 🤝 Contributing
 
-## 🆘 Support
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to submit pull requests, report issues, and contribute to the project.
 
+## 📞 Support
+
+- **Documentation**: Check our guides above
 - **Issues**: [GitHub Issues](https://github.com/memra-platform/memra-sdk/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/memra-platform/memra-sdk/discussions)
-- **Email**: hello@memra.com
-
-## 🔗 Related Projects
-
-- **[memra-workflows](https://github.com/memra-platform/memra-workflows)** - Production workflow templates
-- **[memra-ops](https://github.com/memra-platform/memra-ops)** - Operations and deployment tools
 
 ---
 
-**Built with ❤️ by the memra team** 
+**Ready to build AI workflows that scale?** Start with `pip install memra` and `memra demo`! 🚀 

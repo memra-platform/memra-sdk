@@ -1,14 +1,12 @@
 # 🚀 Quick Start Guide
 
-Get up and running with Memra in **5 minutes**!
+Get up and running with Memra in **2 minutes**!
 
-> **💡 New to Memra?** If you need more detailed setup instructions or run into issues, check out our [Detailed Installation Guide](INSTALLATION_GUIDE.md) or use our automated setup script: `bash scripts/setup_newbie.sh`
->
-> **🔧 Submodules:** This repo uses git submodules for infrastructure and workflow templates. The sparse checkout gives you minimal access to essential files only.
+> **💡 New to Memra?** If you need more detailed setup instructions or run into issues, check out our [Detailed Installation Guide](INSTALLATION_GUIDE.md)
 
 ## 1. Install Memra SDK
 ```bash
-# Upgrade pip first (recommended, especially for Windows)
+# Upgrade pip first (recommended)
 python -m pip install --upgrade pip
 
 # Install Memra SDK
@@ -68,15 +66,34 @@ You should see output like:
 ## 🛠️ Next Steps
 
 - **Explore examples:** Check out the extracted demo files in `~/.memra/demo/`
-- **Check database:** `docker exec -it memra_postgres psql -U postgres -d local_workflow`
+- **Check database:** `docker exec -it memra-ops_postgres_1 psql -U memra -d memra_invoice_db`
 - **Stop services:** `cd ~/.memra/demo/memra-ops && docker compose down`
 
 ## 🆘 Need Help?
 
 - **Docker not running?** Start Docker Desktop
-- **API key issues?** Use `test-secret-for-development` for local demos
+- **API key issues?** The demo uses a development key automatically
 - **Setup problems?** See our [Detailed Installation Guide](INSTALLATION_GUIDE.md)
 - **More details:** See `TEAM_SETUP.md` and `demos/README.md`
+
+## 🔍 What's in the Demo?
+
+The ETL demo processes **15 sample PDF invoices** and demonstrates:
+
+- **AI Vision Processing** - Extract data from PDF invoices using GPT-4 Vision
+- **Multi-Agent Workflow** - 5 specialized agents working together
+- **Data Validation** - Validate extracted data against database schema
+- **Database Integration** - Store processed data in PostgreSQL
+- **Error Handling** - Skip failed files and continue processing
+- **Monitoring** - Track database state before and after processing
+
+## 📊 Demo Results
+
+After running the demo, you'll have:
+- **15+ invoice records** in the database
+- **Real extracted data** (vendor names, amounts, dates, line items)
+- **Validation results** showing which records passed/failed
+- **Complete audit trail** of the processing workflow
 
 ---
 
