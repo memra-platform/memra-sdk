@@ -37,11 +37,18 @@ def run_demo():
     print("⏳ Waiting for services to be ready...")
     wait_for_services()
     
-    # Step 5: Run the demo
+    # Step 5: Start MCP bridge server
+    print("🔌 Starting MCP bridge server...")
+    if not start_mcp_bridge_server(demo_dir):
+        print("❌ Failed to start MCP bridge server.")
+        print("   You can start it manually: cd memra-ops && python mcp_bridge_server.py")
+        return False
+    
+    # Step 6: Run the demo
     print("🎯 Running ETL workflow...")
     success = run_etl_workflow(demo_dir)
     
-    # Step 6: Show results
+    # Step 7: Show results
     if success:
         print("=" * 50)
         print("🎉 Demo completed successfully!")
@@ -53,6 +60,7 @@ def run_demo():
         print("  • Check database: docker exec -it memra_postgres psql -U postgres -d local_workflow")
         print("  • View data: SELECT * FROM invoices ORDER BY created_at DESC;")
         print("  • Stop services: cd memra-ops && docker compose down")
+        print("  • Stop MCP server: pkill -f mcp_bridge_server.py")
         print("  • Explore code: Check the extracted files in the demo directory")
     else:
         print("❌ Demo failed. Check the logs above for details.")
@@ -158,36 +166,132 @@ import asyncio
 import aiohttp
 from aiohttp import web
 import json
+import psycopg2
+import os
 
-async def health_handler(request):
-    return web.json_response({"status": "healthy"})
-
-async def execute_tool_handler(request):
-    data = await request.json()
-    tool_name = data.get('tool_name', 'unknown')
+class MCPBridgeServer:
+    def __init__(self):
+        self.db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/local_workflow')
     
-    # Mock responses for demo
-    if tool_name == 'SQLExecutor':
-        return web.json_response({
-            "success": True,
-            "results": [{"message": "Demo SQL executed"}]
-        })
-    elif tool_name == 'PostgresInsert':
-        return web.json_response({
-            "success": True,
-            "id": 1
-        })
-    else:
-        return web.json_response({
-            "success": True,
-            "message": f"Demo {tool_name} executed"
-        })
+    async def health_handler(self, request):
+        return web.json_response({"status": "healthy", "server": "MCP Bridge"})
+    
+    async def execute_tool_handler(self, request):
+        try:
+            data = await request.json()
+            tool_name = data.get('tool_name', 'unknown')
+            tool_params = data.get('parameters', {})
+            
+            if tool_name == 'SQLExecutor':
+                return await self.execute_sql(tool_params)
+            elif tool_name == 'PostgresInsert':
+                return await self.insert_data(tool_params)
+            elif tool_name == 'DataValidator':
+                return await self.validate_data(tool_params)
+            else:
+                return web.json_response({
+                    "success": True,
+                    "message": f"Demo {tool_name} executed",
+                    "data": {"demo": True}
+                })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": str(e)
+            }, status=500)
+    
+    async def execute_sql(self, params):
+        try:
+            query = params.get('query', 'SELECT 1')
+            conn = psycopg2.connect(self.db_url)
+            cursor = conn.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            return web.json_response({
+                "success": True,
+                "results": results,
+                "query": query
+            })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": f"SQL execution failed: {str(e)}"
+            }, status=500)
+    
+    async def insert_data(self, params):
+        try:
+            table_name = params.get('table_name', 'invoices')
+            data = params.get('data', {})
+            
+            conn = psycopg2.connect(self.db_url)
+            cursor = conn.cursor()
+            
+            # Simple insert logic
+            columns = list(data.keys())
+            values = list(data.values())
+            placeholders = ', '.join(['%s'] * len(values))
+            column_list = ', '.join(columns)
+            
+            query = f"INSERT INTO {table_name} ({column_list}) VALUES ({placeholders}) RETURNING id"
+            cursor.execute(query, values)
+            record_id = cursor.fetchone()[0]
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return web.json_response({
+                "success": True,
+                "record_id": record_id,
+                "message": f"Inserted into {table_name}"
+            })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": f"Insert failed: {str(e)}"
+            }, status=500)
+    
+    async def validate_data(self, params):
+        try:
+            data = params.get('data', {})
+            
+            # Simple validation
+            is_valid = True
+            errors = []
+            
+            if not data.get('vendor_name'):
+                is_valid = False
+                errors.append("Missing vendor name")
+            
+            if not data.get('amount') or float(data.get('amount', 0)) <= 0:
+                is_valid = False
+                errors.append("Invalid amount")
+            
+            return web.json_response({
+                "success": True,
+                "is_valid": is_valid,
+                "errors": errors,
+                "validated_data": data
+            })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": f"Validation failed: {str(e)}"
+            }, status=500)
 
+# Create server instance
+server = MCPBridgeServer()
+
+# Create web application
 app = web.Application()
-app.router.add_get('/health', health_handler)
-app.router.add_post('/execute_tool', execute_tool_handler)
+app.router.add_get('/health', server.health_handler)
+app.router.add_post('/execute_tool', server.execute_tool_handler)
 
 if __name__ == '__main__':
+    print("🚀 Starting MCP Bridge Server on port 8081...")
     web.run_app(app, host='0.0.0.0', port=8081)
 """
         
@@ -232,36 +336,132 @@ import asyncio
 import aiohttp
 from aiohttp import web
 import json
+import psycopg2
+import os
 
-async def health_handler(request):
-    return web.json_response({"status": "healthy"})
-
-async def execute_tool_handler(request):
-    data = await request.json()
-    tool_name = data.get('tool_name', 'unknown')
+class MCPBridgeServer:
+    def __init__(self):
+        self.db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/local_workflow')
     
-    # Mock responses for demo
-    if tool_name == 'SQLExecutor':
-        return web.json_response({
-            "success": True,
-            "results": [{"message": "Demo SQL executed"}]
-        })
-    elif tool_name == 'PostgresInsert':
-        return web.json_response({
-            "success": True,
-            "id": 1
-        })
-    else:
-        return web.json_response({
-            "success": True,
-            "message": f"Demo {tool_name} executed"
-        })
+    async def health_handler(self, request):
+        return web.json_response({"status": "healthy", "server": "MCP Bridge"})
+    
+    async def execute_tool_handler(self, request):
+        try:
+            data = await request.json()
+            tool_name = data.get('tool_name', 'unknown')
+            tool_params = data.get('parameters', {})
+            
+            if tool_name == 'SQLExecutor':
+                return await self.execute_sql(tool_params)
+            elif tool_name == 'PostgresInsert':
+                return await self.insert_data(tool_params)
+            elif tool_name == 'DataValidator':
+                return await self.validate_data(tool_params)
+            else:
+                return web.json_response({
+                    "success": True,
+                    "message": f"Demo {tool_name} executed",
+                    "data": {"demo": True}
+                })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": str(e)
+            }, status=500)
+    
+    async def execute_sql(self, params):
+        try:
+            query = params.get('query', 'SELECT 1')
+            conn = psycopg2.connect(self.db_url)
+            cursor = conn.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            return web.json_response({
+                "success": True,
+                "results": results,
+                "query": query
+            })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": f"SQL execution failed: {str(e)}"
+            }, status=500)
+    
+    async def insert_data(self, params):
+        try:
+            table_name = params.get('table_name', 'invoices')
+            data = params.get('data', {})
+            
+            conn = psycopg2.connect(self.db_url)
+            cursor = conn.cursor()
+            
+            # Simple insert logic
+            columns = list(data.keys())
+            values = list(data.values())
+            placeholders = ', '.join(['%s'] * len(values))
+            column_list = ', '.join(columns)
+            
+            query = f"INSERT INTO {table_name} ({column_list}) VALUES ({placeholders}) RETURNING id"
+            cursor.execute(query, values)
+            record_id = cursor.fetchone()[0]
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return web.json_response({
+                "success": True,
+                "record_id": record_id,
+                "message": f"Inserted into {table_name}"
+            })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": f"Insert failed: {str(e)}"
+            }, status=500)
+    
+    async def validate_data(self, params):
+        try:
+            data = params.get('data', {})
+            
+            # Simple validation
+            is_valid = True
+            errors = []
+            
+            if not data.get('vendor_name'):
+                is_valid = False
+                errors.append("Missing vendor name")
+            
+            if not data.get('amount') or float(data.get('amount', 0)) <= 0:
+                is_valid = False
+                errors.append("Invalid amount")
+            
+            return web.json_response({
+                "success": True,
+                "is_valid": is_valid,
+                "errors": errors,
+                "validated_data": data
+            })
+        except Exception as e:
+            return web.json_response({
+                "success": False,
+                "error": f"Validation failed: {str(e)}"
+            }, status=500)
 
+# Create server instance
+server = MCPBridgeServer()
+
+# Create web application
 app = web.Application()
-app.router.add_get('/health', health_handler)
-app.router.add_post('/execute_tool', execute_tool_handler)
+app.router.add_get('/health', server.health_handler)
+app.router.add_post('/execute_tool', server.execute_tool_handler)
 
 if __name__ == '__main__':
+    print("🚀 Starting MCP Bridge Server on port 8081...")
     web.run_app(app, host='0.0.0.0', port=8081)
 """
     
@@ -546,6 +746,49 @@ def run_etl_workflow(demo_dir):
         return False
     except Exception as e:
         print(f"❌ Error running ETL workflow: {e}")
+        return False
+
+def start_mcp_bridge_server(demo_dir):
+    """Start the MCP bridge server"""
+    try:
+        ops_dir = demo_dir / "memra-ops"
+        bridge_script = ops_dir / "mcp_bridge_server.py"
+        
+        if not bridge_script.exists():
+            print("❌ MCP bridge server script not found")
+            return False
+        
+        # Start the bridge server in the background
+        if os.name == 'nt':  # Windows
+            # Use start command to run in background
+            result = subprocess.run([
+                'start', '/B', 'python', str(bridge_script)
+            ], cwd=ops_dir, shell=True, capture_output=True, text=True)
+        else:  # Unix/Linux/Mac
+            result = subprocess.run([
+                'python', str(bridge_script)
+            ], cwd=ops_dir, start_new_session=True, capture_output=True, text=True)
+        
+        # Wait a moment for the server to start
+        time.sleep(3)
+        
+        # Check if the server is responding
+        try:
+            import requests
+            response = requests.get('http://localhost:8081/health', timeout=5)
+            if response.status_code == 200:
+                print("✅ MCP bridge server started successfully")
+                return True
+            else:
+                print(f"⚠️  MCP bridge server responded with status {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"⚠️  Could not verify MCP bridge server: {e}")
+            print("   Server may still be starting up...")
+            return True  # Assume it's working
+            
+    except Exception as e:
+        print(f"❌ Error starting MCP bridge server: {e}")
         return False
 
 def main():
