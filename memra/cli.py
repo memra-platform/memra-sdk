@@ -79,15 +79,121 @@ def setup_demo_environment():
 def extract_bundled_files(demo_dir):
     """Extract files bundled with the PyPI package"""
     try:
-        # Extract from package data
-        with pkg_resources.path('memra', 'demo_files') as demo_files_path:
-            if demo_files_path.exists():
-                # Copy all files from the bundled demo_files directory
-                shutil.copytree(demo_files_path, demo_dir, dirs_exist_ok=True)
+        import pkg_resources
+        import shutil
+        from pathlib import Path
+        
+        # Extract demo files from package data
+        demo_dir.mkdir(exist_ok=True)
+        
+        # Copy the main ETL demo script
+        try:
+            demo_script = pkg_resources.resource_filename('memra', 'demos/etl_invoice_processing/etl_invoice_demo.py')
+            if Path(demo_script).exists():
+                shutil.copy2(demo_script, demo_dir / "etl_invoice_demo.py")
+                print("✅ Copied ETL demo script")
             else:
-                # Fallback: create minimal demo structure
-                create_minimal_demo(demo_dir)
-                
+                print("⚠️  ETL demo script not found in package")
+        except Exception as e:
+            print(f"⚠️  Could not copy ETL demo script: {e}")
+        
+        # Copy supporting Python files
+        demo_files = [
+            "database_monitor_agent.py",
+            "simple_pdf_processor.py", 
+            "setup_demo_data.py"
+        ]
+        
+        for file_name in demo_files:
+            try:
+                file_path = pkg_resources.resource_filename('memra', f'demos/etl_invoice_processing/{file_name}')
+                if Path(file_path).exists():
+                    shutil.copy2(file_path, demo_dir / file_name)
+                    print(f"✅ Copied {file_name}")
+                else:
+                    print(f"⚠️  {file_name} not found in package")
+            except Exception as e:
+                print(f"⚠️  Could not copy {file_name}: {e}")
+        
+        # Copy sample data directory
+        try:
+            data_source = pkg_resources.resource_filename('memra', 'demos/etl_invoice_processing/data')
+            if Path(data_source).exists():
+                data_dir = demo_dir / "data"
+                shutil.copytree(data_source, data_dir, dirs_exist_ok=True)
+                print("✅ Copied sample invoice data")
+            else:
+                print("⚠️  Sample data not found in package")
+        except Exception as e:
+            print(f"⚠️  Could not copy sample data: {e}")
+        
+        # Create memra-ops directory with docker-compose
+        ops_dir = demo_dir / "memra-ops"
+        ops_dir.mkdir(exist_ok=True)
+        
+        # Create basic docker-compose.yml
+        compose_content = """version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: local_workflow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+"""
+        
+        with open(ops_dir / "docker-compose.yml", "w") as f:
+            f.write(compose_content)
+        
+        # Create basic MCP bridge server
+        mcp_content = """#!/usr/bin/env python3
+import asyncio
+import aiohttp
+from aiohttp import web
+import json
+
+async def health_handler(request):
+    return web.json_response({"status": "healthy"})
+
+async def execute_tool_handler(request):
+    data = await request.json()
+    tool_name = data.get('tool_name', 'unknown')
+    
+    # Mock responses for demo
+    if tool_name == 'SQLExecutor':
+        return web.json_response({
+            "success": True,
+            "results": [{"message": "Demo SQL executed"}]
+        })
+    elif tool_name == 'PostgresInsert':
+        return web.json_response({
+            "success": True,
+            "id": 1
+        })
+    else:
+        return web.json_response({
+            "success": True,
+            "message": f"Demo {tool_name} executed"
+        })
+
+app = web.Application()
+app.router.add_get('/health', health_handler)
+app.router.add_post('/execute_tool', execute_tool_handler)
+
+if __name__ == '__main__':
+    web.run_app(app, host='0.0.0.0', port=8081)
+"""
+        
+        with open(ops_dir / "mcp_bridge_server.py", "w") as f:
+            f.write(mcp_content)
+            
     except Exception as e:
         print(f"⚠️  Could not extract bundled files: {e}")
         print("Creating minimal demo structure...")

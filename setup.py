@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="memra",
-    version="0.2.12",
+    version="0.2.13",
     author="Memra",
     author_email="support@memra.com",
     description="Declarative framework for enterprise workflows with MCP integration - Client SDK",
@@ -13,6 +13,14 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/memra/memra-sdk",
     packages=find_packages(include=['memra', 'memra.*']),
+    include_package_data=True,
+    package_data={
+        'memra': [
+            'demos/etl_invoice_processing/*.py',
+            'demos/etl_invoice_processing/data/*',
+            'demos/etl_invoice_processing/data/invoices/*.PDF',
+        ],
+    },
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
