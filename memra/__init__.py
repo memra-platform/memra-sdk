@@ -6,7 +6,7 @@ Think of it as "Kubernetes for business logic" where agents are the pods and
 departments are the deployments.
 """
 
-__version__ = "0.2.4"
+__version__ = "0.2.15"
 
 # Core imports
 from .models import Agent, Department, Tool, LLM
@@ -28,4 +28,18 @@ __all__ = [
 # Optional: Add version check for compatibility
 import sys
 if sys.version_info < (3, 8):
-    raise RuntimeError("Memra requires Python 3.8 or higher") 
+    raise RuntimeError("Memra requires Python 3.8 or higher")
+
+# CLI functionality
+def demo():
+    """Run the ETL invoice processing demo"""
+    from .cli import run_demo
+    run_demo()
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "demo":
+        demo()
+    else:
+        print("Usage: python -m memra demo")
+        print("Or: memra demo") 

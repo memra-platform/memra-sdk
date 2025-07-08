@@ -76,16 +76,13 @@ parser_agent = Agent(
     llm=parsing_llm,
     sops=[
         "Load invoice PDF file",
-        "Convert to high-contrast images if needed", 
-        "Run OCR to extract text",
-        "Use schema to identify and extract fields",
+        "Send to vision model for field extraction",
         "Validate extracted data against schema types",
         "Return structured invoice data"
     ],
     systems=["InvoiceStore"],
     tools=[
         {"name": "PDFProcessor", "hosted_by": "memra"},
-        {"name": "OCRTool", "hosted_by": "memra"},
         {"name": "InvoiceExtractionWorkflow", "hosted_by": "memra"}
     ],
     input_keys=["file", "invoice_schema"],
@@ -105,8 +102,8 @@ writer_agent = Agent(
     ],
     systems=["Database"],
     tools=[
-        {"name": "DataValidator", "hosted_by": "memra"},
-        {"name": "PostgresInsert", "hosted_by": "memra"}
+        {"name": "DataValidator", "hosted_by": "mcp"},
+        {"name": "PostgresInsert", "hosted_by": "mcp"}
     ],
     input_keys=["invoice_data", "invoice_schema"],
     output_key="write_confirmation"
@@ -142,7 +139,9 @@ ap_department = Department(
     },
     context={
         "company_id": "acme_corp",
-        "fiscal_year": "2024"
+        "fiscal_year": "2024",
+        "mcp_bridge_url": "http://localhost:8081",
+        "mcp_bridge_secret": "test-secret-for-development"
     }
 )
 
@@ -152,8 +151,8 @@ print("📡 Tools will execute on Memra API server")
 
 engine = ExecutionEngine()
 input_data = {
-    "file": "path/to/your/invoice.pdf",  # Update this path to your invoice file
-    "connection": "postgresql://tarpus@localhost:5432/memra_invoice_db"
+    "file": "invoices/10352259310.PDF",  # For development - users should update to their invoice path
+    "connection": "postgresql://memra:memra123@localhost:5432/memra_invoice_db"
 }
 
 result = engine.execute_department(ap_department, input_data)

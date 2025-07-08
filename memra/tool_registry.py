@@ -128,24 +128,32 @@ class ToolRegistry:
             last_error = None
             for endpoint in endpoints_to_try:
                 try:
+                    logger.info(f"Trying endpoint: {endpoint}")
                     with httpx.Client(timeout=60.0) as client:
                         response = client.post(endpoint, json=payload, headers=headers)
+                        
+                        logger.info(f"Response status for {endpoint}: {response.status_code}")
                         
                         if response.status_code == 200:
                             result = response.json()
                             logger.info(f"MCP tool {tool_name} executed successfully via {endpoint}")
                             return result
                         elif response.status_code == 404:
+                            logger.info(f"Endpoint {endpoint} returned 404, trying next...")
                             continue  # Try next endpoint
                         else:
+                            logger.error(f"Endpoint {endpoint} returned {response.status_code}: {response.text}")
                             response.raise_for_status()
                             
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 404:
+                        logger.info(f"Endpoint {endpoint} returned 404, trying next...")
                         continue  # Try next endpoint
+                    logger.error(f"HTTP error for {endpoint}: {e.response.status_code} - {e.response.text}")
                     last_error = e
                     continue
                 except Exception as e:
+                    logger.error(f"Exception for {endpoint}: {str(e)}")
                     last_error = e
                     continue
             
