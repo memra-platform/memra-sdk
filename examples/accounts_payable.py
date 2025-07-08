@@ -144,7 +144,7 @@ ap_department = Department(
 # Execute the department
 engine = ExecutionEngine()
 input_data = {
-    "file": "path/to/your/invoice.pdf",  # Update this path to your invoice file
+    "file": "invoices/10352259310.PDF",  # For development - users should update to their invoice path
     "connection": "postgresql://your_username@localhost:5432/memra_invoice_db"
 }
 

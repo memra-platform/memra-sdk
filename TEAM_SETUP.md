@@ -1,160 +1,145 @@
 # Memra Team Setup Guide
 
-This guide will help you set up the database for the Memra invoice processing system.
+Welcome to the Memra platform! This guide will help you and your team get up and running with a production-like environment in minutes.
 
-## 🚀 Quick Start
+---
 
-### 1. Clone the Repository
+## 🚀 Quick Start (Recommended)
 
-```bash
-git clone https://github.com/memra-platform/memra-sdk.git
-cd memra-sdk
-```
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd memra
+   ```
+2. **Create and activate the conda environment:**
+   ```bash
+   conda create -n memra python=3.11
+   conda activate memra
+   pip install -r requirements.txt
+   ```
+3. **Set your Memra API key:**
+   ```bash
+   export MEMRA_API_KEY="your-api-key-here"
+   ```
+4. **Start all services (PostgreSQL, MCP bridge, etc.):**
+   ```bash
+   docker-compose up -d
+   # Or use the enhanced script:
+   python scripts/start_memra.py
+   ```
+5. **Run the ETL demo:**
+   ```bash
+   python demos/etl_invoice_processing/etl_invoice_demo.py
+   ```
 
-### 2. Set Up Python Environment
+---
 
-```bash
-# Create conda environment
-conda create -n memra python=3.10
-conda activate memra
+## 🐳 Docker Compose Workflow
+- **All engineers get the same environment**: Database, bridge, and sample data are spun up with one command.
+- **No database data in Git**: Only schema (`docs/database_schema.sql`) and sample data (`docs/sample_data.sql`) are versioned.
+- **Reset anytime**: `docker-compose down -v` wipes all data for a clean slate.
+- **No local conflicts**: Each developer has their own isolated database.
 
-# Install dependencies
-pip install -e .
-```
+---
 
-### 3. Set Up Database
-
-**Option A: Docker (Recommended)**
-```bash
-# Start database with Docker Compose
-docker-compose up -d
-
-# Verify it's running
-docker ps | grep postgres
-```
-
-**Option B: Local PostgreSQL**
-```bash
-# Install PostgreSQL (macOS)
-brew install postgresql
-brew services start postgresql
-
-# Create database
-createdb memra_invoice_db
-
-# Run setup script
-psql memra_invoice_db < local/dependencies/setup_database.sql
-```
-
-### 4. Update Connection String
-
-Edit `examples/accounts_payable.py` line 147:
-
-```python
-# Update with your database credentials
-"connection": "postgresql://memra:memra123@localhost:5432/memra_invoice_db"  # Docker
-# OR
-"connection": "postgresql://your_username@localhost:5432/memra_invoice_db"  # Local PostgreSQL
-```
-
-### 5. Get API Key from Team Lead
-
-Contact your team lead for a Memra API key, then set it:
-
-```bash
-# Set environment variable (required for API access)
-export MEMRA_API_KEY="your-api-key-from-team-lead"
-
-# Optional: Add to shell profile for persistence
-echo 'export MEMRA_API_KEY="your-api-key-from-team-lead"' >> ~/.zshrc
-```
-
-## 🧪 Test the Setup
-
-### 1. Test Database Connection
-
-```bash
-# Docker
-psql postgresql://memra:memra123@localhost:5432/memra_invoice_db -c "SELECT COUNT(*) FROM invoices;"
-
-# Local PostgreSQL  
-psql memra_invoice_db -c "SELECT COUNT(*) FROM invoices;"
-```
-
-Should return: `count: 2` (sample records)
-
-### 2. Test API Access
-
-```bash
-# Test that your API key works
-python examples/accounts_payable_client.py
-```
-
-Expected output:
-- ✅ API Health check passes
-- 🚀 Workflow starts successfully
-- 📡 Tools execute remotely on Memra API
-
-### 3. View Sample Data
-
-```bash
-# Connect to database
-psql postgresql://memra:memra123@localhost:5432/memra_invoice_db
-
-# View sample invoices
-SELECT invoice_number, vendor_name, total_amount FROM invoices;
-```
-
-## 📋 System Dependencies
-
-- **Python 3.10+**
-- **PostgreSQL** (or Docker)
-- **poppler-utils** (for PDF processing):
+## 🛠️ Manual Database Access
+- Connect to the running container:
   ```bash
-  # macOS
-  brew install poppler
-  
-  # Ubuntu/Debian
-  sudo apt-get install poppler-utils
+  docker exec -it memra_postgres psql -U memra -d memra_invoice_db
+  ```
+- Or use any PostgreSQL client with:
+  - Host: `localhost`
+  - Port: `5432`
+  - User: `memra`
+  - Password: `memra123`
+  - Database: `memra_invoice_db`
+
+---
+
+## 🧑‍💻 Development Workflow
+- **Start everything:**
+  ```bash
+  python scripts/start_memra.py
+  # or
+  docker-compose up -d
+  ```
+- **Run workflows:**
+  ```bash
+  python demos/etl_invoice_processing/etl_invoice_demo.py
+  python examples/accounts_payable_client.py
+  ```
+- **Stop everything:**
+  ```bash
+  python scripts/stop_memra.py
+  # or
+  docker-compose down
   ```
 
-## 🔧 Troubleshooting
+---
 
-### Database Connection Issues
-```bash
-# Check if PostgreSQL is running
-pg_isready
+## 🐍 Memra SDK via pip
+- The core Memra SDK is published to PyPI for easy use in other projects:
+  ```bash
+  pip install memra-sdk
+  ```
+- For local development, use the version in this repo.
 
-# Check Docker container
-docker ps | grep postgres
+---
 
-# Restart Docker container
-docker-compose restart
+## 📝 Troubleshooting
+- **Docker not running?** Start Docker Desktop.
+- **Database issues?**
+  ```bash
+  docker-compose down -v
+  docker-compose up -d
+  docker logs memra_postgres
+  ```
+- **Bridge issues?**
+  ```bash
+  docker-compose restart mcp_bridge
+  docker logs memra_mcp_bridge
+  ```
+- **API issues?**
+  ```bash
+  echo $MEMRA_API_KEY
+  curl https://api.memra.co/health
+  ```
+
+---
+
+## 📁 File Structure
+```
+memra/
+├── demos/                    # Comprehensive demos
+│   └── etl_invoice_processing/
+├── examples/                 # Basic examples
+├── docs/                     # Documentation
+│   ├── database_schema.sql   # Database schema
+│   └── sample_data.sql       # Sample data
+├── scripts/                  # Utility scripts
+│   ├── start_memra.py        # Startup script
+│   └── stop_memra.py         # Shutdown script
+├── docker-compose.yml        # Docker services
+├── requirements.txt          # Python dependencies
+└── TEAM_SETUP.md             # This file
 ```
 
-### Import Errors
-```bash
-# Reinstall in development mode
-pip install -e .
-```
+---
 
-## 📁 Database Schema
+## 🤝 Collaboration
+- **Schema and sample data are versioned**—never commit actual database files.
+- **Update sample data** when adding new features.
+- **Test with a fresh database** before pushing changes.
+- **For schema changes:**
+  - Update `docs/database_schema.sql` and `docs/sample_data.sql`.
+  - Test with `docker-compose up -d`.
 
-The `invoices` table includes:
-- **invoice_number**: Unique invoice identifier
-- **vendor_name**: Company/vendor name  
-- **invoice_date**: Date of the invoice
-- **total_amount**: Total invoice amount
-- **tax_amount**: Tax portion (if any)
-- **line_items**: JSON array of invoice line items
-- **status**: Processing status (pending, processed, etc.)
+---
 
-See `local/dependencies/setup_database.sql` for complete schema.
-
-## 🆘 Need Help?
-
-- **Database Setup**: See `local/dependencies/README.md`
-- **Schema Questions**: Check `local/dependencies/setup_database.sql`
-- **General Issues**: Contact team lead
+## 🆘 Support
+- **Docs:** See `docs/` directory
+- **Issues:** Create a GitHub issue
+- **API:** info@memra.co
+- **Team chat:** Use your team's platform
 
 Happy coding! 🚀 

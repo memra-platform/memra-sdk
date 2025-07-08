@@ -1,0 +1,11 @@
+[submodule "memra-ops"]
+	path = memra-ops
+	url = https://github.com/memra-platform/memra-ops.git
+	shallow = true
+	sparse-checkout = docker-compose.yml docker-compose.mcp.yml Dockerfile.mcp mcp_bridge_server.py requirements.txt
+
+[submodule "memra-workflows"]
+	path = memra-workflows
+	url = https://github.com/memra-platform/memra-workflows.git
+	shallow = true
+	sparse-checkout = invoice_processing/ accounts_payable/ propane_delivery/ text_to_sql/ 
