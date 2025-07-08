@@ -6,7 +6,7 @@ Think of it as "Kubernetes for business logic" where agents are the pods and
 departments are the deployments.
 """
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 
 # Core imports
 from .models import Agent, Department, Tool, LLM
