@@ -1,1 +1,0 @@
-Before running any command, or especially before installing any packages and before running any demo scripts make sure you are in the correct conda environment: source /Users/tarpus/miniconda3/bin/activate memra
