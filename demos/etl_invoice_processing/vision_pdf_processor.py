@@ -25,7 +25,7 @@ class VisionPDFProcessor:
     
     def __init__(self, api_key: str = None):
         """Initialize the vision processor"""
-        self.api_key = api_key or "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"
+        self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY", "")
         self.client = InferenceClient(
             provider="fireworks-ai",
             api_key=self.api_key,
