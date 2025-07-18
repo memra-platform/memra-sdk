@@ -198,6 +198,13 @@ config.py
 fly.toml
 Dockerfile
 Procfile
+
+# Files with hardcoded secrets (server-only)
+memra-ops/mcp_bridge_server.py
+memra-ops/config.py
+memra-ops/etl_tools.py
+memra-ops/tools/mcp_bridge_server.py
+memra-etl-service/app.py
 docker-compose.yml
 requirements.txt
 
