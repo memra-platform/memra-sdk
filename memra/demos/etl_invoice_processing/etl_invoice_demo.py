@@ -791,8 +791,10 @@ def process_database_insertion(agent, tool_results, **kwargs):
                 # Inject the properly formatted data into the tool parameters
                 if 'parameters' not in result:
                     result['parameters'] = {}
-                result['parameters']['data'] = db_data
-                print(f"\n✅ [AGENT 4] Injected transformed data into PostgresInsert parameters")
+                # Pass the data in the format expected by PostgresInsert tool
+                result['parameters']['invoice_data'] = invoice_data  # Pass the original invoice_data
+                result['parameters']['table_name'] = 'invoices'
+                print(f"\n✅ [AGENT 4] Injected invoice_data into PostgresInsert parameters")
     
     # Call the original print function for debugging
     print_database_data(agent, tool_results, invoice_data)
