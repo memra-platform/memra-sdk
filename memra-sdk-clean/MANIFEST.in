@@ -1,0 +1,42 @@
+# Include only the client SDK files
+include README.md
+include LICENSE
+include CHANGELOG.md
+include requirements.txt
+include examples/*.py
+include docs/*.md
+include docs/*.sql
+include mcp_bridge_server.py
+recursive-include memra *.py
+
+# Include ETL demo files
+include demos/etl_invoice_processing/etl_invoice_demo.py
+include demos/etl_invoice_processing/database_monitor_agent.py
+include demos/etl_invoice_processing/simple_pdf_processor.py
+include demos/etl_invoice_processing/setup_demo_data.py
+recursive-include demos/etl_invoice_processing/data *
+
+# Explicitly exclude server-only files and directories
+exclude app.py
+exclude server_tool_registry.py
+exclude config.py
+exclude fly.toml
+exclude Dockerfile
+exclude Procfile
+exclude docker-compose.yml
+exclude memra-ops/docker-compose.yml
+exclude memra-ops/docker-compose.mcp.yml
+exclude memra-ops/docker/docker-compose.yml
+recursive-exclude logic *
+recursive-exclude scripts *
+recursive-exclude docs *
+recursive-exclude examples *
+recursive-exclude tests *
+recursive-exclude temp_processing *
+recursive-exclude invoices *
+recursive-exclude local *
+recursive-exclude dist *
+recursive-exclude __pycache__ *
+recursive-exclude *.egg-info *
+exclude .DS_Store
+exclude .dockerignore 
