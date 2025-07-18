@@ -1,0 +1,141 @@
+{
+  "pdf_path": "/Users/tarpus/memra/demos/etl_invoice_processing/data/invoices/10352259401.PDF",
+  "pdf_text_test": {
+    "success": true,
+    "pages": 4,
+    "text_length": 68,
+    "text_content": "\n--- PAGE 1 ---\n\n\n--- PAGE 2 ---\n\n\n--- PAGE 3 ---\n\n\n--- PAGE 4 ---\n\n"
+  },
+  "pdf_processor_test": {
+    "success": true,
+    "result": {
+      "success": true,
+      "data": {
+        "file_path": "/Users/tarpus/memra/demos/etl_invoice_processing/data/invoices/10352259401.PDF",
+        "text_content": "PDF text extraction failed - using mock data",
+        "extracted_data": {
+          "headerSection": {
+            "vendorName": "Gas Distribution Ltd.",
+            "subtotal": 603.36
+          },
+          "billingDetails": {
+            "invoiceNumber": "10352259401",
+            "invoiceDate": "2024-09-19"
+          },
+          "chargesSummary": {
+            "document_total": 729.09,
+            "secondary_tax": 59.4,
+            "lineItemsBreakdown": [
+              {
+                "description": "PROPANE, C3H8, 33 1/3LB, (14KG / 30.8LB)",
+                "quantity": 36,
+                "unit_price": 16.76,
+                "amount": 603.36,
+                "main_product": true
+              },
+              {
+                "description": "EMPTY CYLINDER PROPANE, 30.8LB (14KG)",
+                "quantity": 40,
+                "unit_price": 0.0,
+                "amount": 0.0,
+                "main_product": false
+              },
+              {
+                "description": "CHARGE, FUEL SURCHARGE",
+                "quantity": 1.0,
+                "unit_price": 0.0,
+                "amount": 0.0,
+                "main_product": false
+              },
+              {
+                "description": "CHARGE, CARBON TAX PROPANE, ON, NB, SASK, MANITOBA, 33 1/3LB CYLINDER",
+                "quantity": 36,
+                "unit_price": 1.84,
+                "amount": 66.33,
+                "main_product": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    "extracted_data": {
+      "headerSection": {
+        "vendorName": "Gas Distribution Ltd.",
+        "subtotal": 603.36
+      },
+      "billingDetails": {
+        "invoiceNumber": "10352259401",
+        "invoiceDate": "2024-09-19"
+      },
+      "chargesSummary": {
+        "document_total": 729.09,
+        "secondary_tax": 59.4,
+        "lineItemsBreakdown": [
+          {
+            "description": "PROPANE, C3H8, 33 1/3LB, (14KG / 30.8LB)",
+            "quantity": 36,
+            "unit_price": 16.76,
+            "amount": 603.36,
+            "main_product": true
+          },
+          {
+            "description": "EMPTY CYLINDER PROPANE, 30.8LB (14KG)",
+            "quantity": 40,
+            "unit_price": 0.0,
+            "amount": 0.0,
+            "main_product": false
+          },
+          {
+            "description": "CHARGE, FUEL SURCHARGE",
+            "quantity": 1.0,
+            "unit_price": 0.0,
+            "amount": 0.0,
+            "main_product": false
+          },
+          {
+            "description": "CHARGE, CARBON TAX PROPANE, ON, NB, SASK, MANITOBA, 33 1/3LB CYLINDER",
+            "quantity": 36,
+            "unit_price": 1.84,
+            "amount": 66.33,
+            "main_product": false
+          }
+        ]
+      }
+    }
+  },
+  "validation_results": {
+    "overall_valid": true,
+    "issues": [],
+    "warnings": [],
+    "field_analysis": {
+      "vendor_name": {
+        "value": "Gas Distribution Ltd.",
+        "valid": true,
+        "issues": []
+      },
+      "invoice_number": {
+        "value": "10352259401",
+        "expected": "10352259401",
+        "valid": true,
+        "issues": []
+      },
+      "invoice_date": {
+        "value": "2024-09-19",
+        "valid": true,
+        "issues": []
+      },
+      "total_amount": {
+        "value": 729.09,
+        "valid": true,
+        "issues": []
+      },
+      "line_items": {
+        "count": 4,
+        "valid": true,
+        "issues": []
+      }
+    }
+  },
+  "overall_success": true
+}

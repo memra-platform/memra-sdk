@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot Widget</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Reset and base styles */
+        .chatbot-widget * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        .chatbot-widget {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+        }
+
+        /* Floating button */
+        .chatbot-button {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border: none;
+            border-radius: 50%;
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chatbot-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 35px rgba(99, 102, 241, 0.4);
+            background: linear-gradient(135deg, #5855eb 0%, #7c3aed 100%);
+        }
+
+        .chatbot-button:active {
+            transform: scale(0.95);
+        }
+
+        .chatbot-button.hidden {
+            opacity: 0;
+            transform: scale(0);
+            pointer-events: none;
+        }
+
+        /* Button pulse animation */
+        .chatbot-button::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            opacity: 0.2;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.2; }
+            50% { transform: scale(1.2); opacity: 0.1; }
+            100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        /* Message icon */
+        .chatbot-icon {
+            width: 28px;
+            height: 28px;
+            color: white;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Tooltip */
+        .chatbot-tooltip {
+            position: absolute;
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-right: 16px;
+            background: #1f2937;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .chatbot-tooltip::after {
+            content: '';
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 6px solid transparent;
+            border-left-color: #1f2937;
+        }
+
+        .chatbot-button:hover .chatbot-tooltip {
+            opacity: 1;
+        }
+
+        /* Chat window */
+        .chatbot-window {
+            position: fixed;
+            bottom: 100px;
+            right: 24px;
+            width: 384px;
+            height: 600px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            border: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            transform-origin: bottom right;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(16px) scale(0.95);
+            pointer-events: none;
+        }
+
+        .chatbot-window.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: all;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 640px) {
+            .chatbot-window {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                border-radius: 0;
+                transform-origin: center;
+            }
+            
+            .chatbot-widget {
+                bottom: 16px;
+                right: 16px;
+            }
+        }
+
+        /* Header */
+        .chatbot-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 24px;
+            border-bottom: 1px solid #f3f4f6;
+            background: linear-gradient(135deg, #f8faff 0%, #f5f3ff 100%);
+            border-radius: 16px 16px 0 0;
+        }
+
+        .chatbot-header-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chatbot-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .chatbot-avatar::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            width: 16px;
+            height: 16px;
+            background: #10b981;
+            border: 2px solid white;
+            border-radius: 50%;
+        }
+
+        .chatbot-sparkles {
+            width: 24px;
+            height: 24px;
+            color: white;
+        }
+
+        .chatbot-header-text h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 2px;
+        }
+
+        .chatbot-header-text p {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .chatbot-close {
+            padding: 8px;
+            background: none;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .chatbot-close:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .chatbot-new-conversation {
+            padding: 8px;
+            background: none;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-right: 8px;
+        }
+
+        .chatbot-new-conversation:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .chatbot-new-conversation svg {
+            color: #6b7280;
+        }
+
+        .chatbot-close-icon {
+            width: 20px;
+            height: 20px;
+            color: #6b7280;
+        }
+
+        /* Messages area */
+        .chatbot-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            background: rgba(249, 250, 251, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .chatbot-messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .chatbot-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chatbot-messages::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 2px;
+        }
+
+        /* Message bubble */
+        .message {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .message.bot .message-avatar {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        }
+
+        .message.user .message-avatar {
+            background: #d1d5db;
+        }
+
+        .message-content {
+            max-width: 280px;
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .message.bot .message-content {
+            background: white;
+            color: #1f2937;
+            border-radius: 16px 16px 16px 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f3f4f6;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border-radius: 16px 16px 4px 16px;
+        }
+
+        .user-avatar-text {
+            font-size: 12px;
+            font-weight: 500;
+            color: #6b7280;
+        }
+
+        /* Typing indicator */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .typing-dots {
+            background: #f3f4f6;
+            border-radius: 16px 16px 16px 4px;
+            padding: 12px 16px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #9ca3af;
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-8px);
+            }
+        }
+
+        /* Input area */
+        .chatbot-input {
+            padding: 16px;
+            background: white;
+            border-top: 1px solid #f3f4f6;
+            border-radius: 0 0 16px 16px;
+        }
+
+        .chatbot-form {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chatbot-text-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 24px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .chatbot-text-input:focus {
+            background: white;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .chatbot-text-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .chatbot-send {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .chatbot-send:hover:not(:disabled) {
+            transform: scale(1.05);
+            background: linear-gradient(135deg, #5855eb 0%, #7c3aed 100%);
+        }
+
+        .chatbot-send:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        .chatbot-send:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .chatbot-send-icon {
+            width: 20px;
+            height: 20px;
+            color: white;
+        }
+
+        .chatbot-footer {
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        .chatbot-footer p {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        /* Memra logo styling */
+        .memra-logo {
+            font-family: 'Effra', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+            font-size: 24px;
+            color: white;
+            line-height: 1;
+        }
+
+        .memra-logo-small {
+            font-family: 'Effra', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+            font-size: 16px;
+            color: white;
+            line-height: 1;
+        }
+
+        .memra-logo-button {
+            font-family: 'Effra', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+            font-size: 28px;
+            color: white;
+            line-height: 1;
+        }
+
+        .chatbot-kbd {
+            background: #f3f4f6;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+
+        /* Backdrop for mobile */
+        .chatbot-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(4px);
+            z-index: 9998;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+
+        .chatbot-backdrop.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (min-width: 641px) {
+            .chatbot-backdrop {
+                display: none;
+            }
+        }
+
+        /* Hidden class */
+        .hidden {
+            display: none;
+        }
+
+        /* Quick action buttons */
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 16px 0;
+            padding: 0 8px;
+        }
+
+        .quick-action-btn {
+            background: linear-gradient(135deg, #f8faff 0%, #f5f3ff 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #6366f1;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .quick-action-btn:hover {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .quick-action-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="chatbot-widget">
+        <!-- Mobile backdrop -->
+        <div class="chatbot-backdrop" id="chatbot-backdrop"></div>
+        
+        <!-- Chat window -->
+        <div class="chatbot-window" id="chatbot-window">
+            <!-- Header -->
+            <div class="chatbot-header">
+                <div class="chatbot-header-info">
+                    <div class="chatbot-avatar">
+                        <span class="memra-logo">m</span>
+                    </div>
+                    <div class="chatbot-header-text">
+                        <h3>AI Assistant</h3>
+                        <p>Online now</p>
+                    </div>
+                </div>
+                <button class="chatbot-new-conversation" id="chatbot-new-conversation" title="Start new conversation">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                </button>
+                <button class="chatbot-close" id="chatbot-close">
+                    <svg class="chatbot-close-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Messages -->
+            <div class="chatbot-messages" id="chatbot-messages">
+                <div class="message bot">
+                    <div class="message-avatar">
+                        <span class="memra-logo-small">m</span>
+                    </div>
+                    <div class="message-content">
+                        Hi there! 👋 I'm your AI assistant. I can help you learn about Memra's digital employees, pricing, and use cases. How can I help you today?
+                    </div>
+                </div>
+                
+                <!-- Quick action buttons -->
+                <div class="quick-actions" id="quick-actions">
+                    <button class="quick-action-btn" onclick="handleQuickAction('pricing')">
+                        💰 Pricing Info
+                    </button>
+                    <button class="quick-action-btn" onclick="handleQuickAction('demo')">
+                        🚀 Schedule Demo
+                    </button>
+                    <button class="quick-action-btn" onclick="handleQuickAction('use cases')">
+                        📋 Use Cases
+                    </button>
+                </div>
+            </div>
+
+            <!-- Input -->
+            <div class="chatbot-input">
+                <form class="chatbot-form" id="chatbot-form">
+                    <input 
+                        type="text" 
+                        class="chatbot-text-input" 
+                        id="chatbot-input-field"
+                        placeholder="Type your message..."
+                        autocomplete="off"
+                    >
+                    <button type="submit" class="chatbot-send" id="chatbot-send">
+                        <svg class="chatbot-send-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                        </svg>
+                    </button>
+                </form>
+                <div class="chatbot-footer">
+                    <p>Powered by memra • Press <span class="chatbot-kbd">Esc</span> to close</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating button -->
+        <button class="chatbot-button" id="chatbot-button">
+            <svg class="chatbot-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
+            <div class="chatbot-tooltip">Chat with us</div>
+        </button>
+    </div>
+
+    <script>
+        (function() {
+            // Configuration
+            const config = {
+                brandName: 'AI Assistant',
+                apiEndpoint: 'https://memra-api.fly.dev/chat',
+                leadEndpoint: 'https://memra-api.fly.dev/submit-lead'
+            };
+
+            // DOM elements
+            const button = document.getElementById('chatbot-button');
+            const window = document.getElementById('chatbot-window');
+            const backdrop = document.getElementById('chatbot-backdrop');
+            const closeButton = document.getElementById('chatbot-close');
+            const newConversationButton = document.getElementById('chatbot-new-conversation');
+            const form = document.getElementById('chatbot-form');
+            const input = document.getElementById('chatbot-input-field');
+            const messages = document.getElementById('chatbot-messages');
+            const sendButton = document.getElementById('chatbot-send');
+
+            // State
+            let isOpen = false;
+            let isTyping = false;
+            let messageId = 0;
+            let conversationHistory = [];
+            let sessionId = null; // Add session ID tracking
+            let conversationState = {
+                stage: "exploring",
+                topics_discussed: [],
+                user_intent: null,
+                interest_level: "low",
+                last_question: null
+            };
+            
+            // Lead collection state
+            let isCollectingLead = false;
+            let leadData = {};
+            let leadSubmitted = false;
+
+            // Session management functions
+            function getStoredSessionId() {
+                return localStorage.getItem('chatbot_session_id');
+            }
+
+            function storeSessionId(sessionId) {
+                if (sessionId) {
+                    localStorage.setItem('chatbot_session_id', sessionId);
+                    console.log('Stored session ID:', sessionId);
+                    // Update debug display
+                    updateSessionDebugDisplay(sessionId);
+                }
+            }
+
+            function clearSessionId() {
+                localStorage.removeItem('chatbot_session_id');
+                sessionId = null;
+                console.log('Cleared session ID');
+                updateSessionDebugDisplay(null);
+            }
+
+            function updateSessionDebugDisplay(sessionId) {
+                // Add debug display to chat header
+                let debugElement = document.getElementById('session-debug');
+                if (!debugElement) {
+                    debugElement = document.createElement('div');
+                    debugElement.id = 'session-debug';
+                    debugElement.style.cssText = 'position: absolute; top: 5px; right: 60px; font-size: 10px; color: #666; background: rgba(0,0,0,0.1); padding: 2px 4px; border-radius: 3px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;';
+                    document.querySelector('.chatbot-header').appendChild(debugElement);
+                }
+                if (sessionId) {
+                    debugElement.textContent = `Session: ${sessionId.substring(0, 8)}...`;
+                    debugElement.title = `Full Session ID: ${sessionId}`;
+                } else {
+                    debugElement.textContent = 'No Session';
+                    debugElement.title = 'No active session';
+                }
+            }
+
+            function startNewConversation() {
+                clearSessionId();
+                conversationHistory = [];
+                conversationState = {
+                    stage: "exploring",
+                    topics_discussed: [],
+                    user_intent: null,
+                    interest_level: "low",
+                    last_question: null
+                };
+                isCollectingLead = false;
+                leadData = {};
+                leadSubmitted = false;
+                console.log('Started new conversation');
+            }
+
+            // Utility functions
+            function generateId() {
+                return ++messageId;
+            }
+
+            function formatTime(date) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+
+            function scrollToBottom() {
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function isValidEmail(email) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return emailRegex.test(email);
+            }
+
+            function extractNameAndEmail(text) {
+                const emailRegex = /([^\s@]+@[^\s@]+\.[^\s@]+)/;
+                const emailMatch = text.match(emailRegex);
+                
+                let name = '';
+                let email = '';
+                
+                if (emailMatch) {
+                    email = emailMatch[1];
+                    // Remove email from text to get potential name
+                    const textWithoutEmail = text.replace(emailRegex, '').trim();
+                    // Clean up common words and get remaining text as name
+                    name = textWithoutEmail
+                        .replace(/^(my\s+name\s+is|i'm|i\s+am|name:|email:)/i, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                } else {
+                    // No email found, treat as name if it looks like one
+                    const cleanText = text
+                        .replace(/^(my\s+name\s+is|i'm|i\s+am|name:)/i, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    
+                    // Simple heuristic: if it's short and doesn't contain common non-name words
+                    if (cleanText.length > 0 && cleanText.length < 50 && 
+                        !cleanText.includes('@') && 
+                        !/(want|need|like|help|demo|pricing|schedule)/i.test(cleanText)) {
+                        name = cleanText;
+                    }
+                }
+                
+                return { name, email };
+            }
+
+            function createMessage(text, sender) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${sender}`;
+                
+                const avatar = document.createElement('div');
+                avatar.className = 'message-avatar';
+                
+                if (sender === 'bot') {
+                    avatar.innerHTML = `<span class="memra-logo-small">m</span>`;
+                } else {
+                    avatar.innerHTML = `<span class="user-avatar-text">You</span>`;
+                }
+
+                const content = document.createElement('div');
+                content.className = 'message-content';
+                content.textContent = text;
+
+                if (sender === 'user') {
+                    messageDiv.appendChild(content);
+                    messageDiv.appendChild(avatar);
+                } else {
+                    messageDiv.appendChild(avatar);
+                    messageDiv.appendChild(content);
+                }
+
+                return messageDiv;
+            }
+
+            function createTypingIndicator() {
+                const typingDiv = document.createElement('div');
+                typingDiv.className = 'typing-indicator';
+                typingDiv.id = 'typing-indicator';
+                
+                const avatar = document.createElement('div');
+                avatar.className = 'message-avatar';
+                avatar.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
+                avatar.innerHTML = `<span class="memra-logo-small">m</span>`;
+
+                const dots = document.createElement('div');
+                dots.className = 'typing-dots';
+                dots.innerHTML = `
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                `;
+
+                typingDiv.appendChild(avatar);
+                typingDiv.appendChild(dots);
+
+                return typingDiv;
+            }
+
+            function showTypingIndicator() {
+                if (isTyping) return;
+                isTyping = true;
+                
+                const typingIndicator = createTypingIndicator();
+                messages.appendChild(typingIndicator);
+                scrollToBottom();
+            }
+
+            function hideTypingIndicator() {
+                if (!isTyping) return;
+                isTyping = false;
+                
+                const typingIndicator = document.getElementById('typing-indicator');
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+            }
+
+            function openChat() {
+                isOpen = true;
+                button.classList.add('hidden');
+                window.classList.add('open');
+                backdrop.classList.add('open');
+                
+                // Load stored session ID when opening chat
+                if (!sessionId) {
+                    sessionId = getStoredSessionId();
+                    if (sessionId) {
+                        console.log('Loaded stored session ID:', sessionId);
+                    }
+                }
+                
+                // Show session debug display
+                updateSessionDebugDisplay(sessionId);
+                
+                setTimeout(() => {
+                    input.focus();
+                }, 100);
+            }
+
+            function closeChat() {
+                isOpen = false;
+                button.classList.remove('hidden');
+                window.classList.remove('open');
+                backdrop.classList.remove('open');
+            }
+
+            // Check if bot response indicates lead collection should start
+            function shouldStartLeadCollection(botResponse) {
+                const triggers = [
+                    'could you share your name and email',
+                    'please provide your name and email',
+                    'name and email address',
+                    'i need your name and email',
+                    'share your name and email',
+                    'your name and email address',
+                    'could you please share your name and email address',
+                    'please share your name and email',
+                    'name and email',
+                    'connect you with our team'
+                ];
+                
+                const lowerResponse = botResponse.toLowerCase();
+                return triggers.some(trigger => lowerResponse.includes(trigger));
+            }
+
+            // Check if user message indicates they want to exit lead collection mode
+            function shouldExitLeadCollection(userMessage) {
+                const exitTriggers = [
+                    'just browsing', 'just looking', 'looking around', 'checking out',
+                    'not ready', 'not interested', 'maybe later', 'just exploring',
+                    'no thanks', 'not now', 'just curious', 'just checking',
+                    'cancel', 'stop', 'never mind', 'forget it'
+                ];
+                
+                const lowerMessage = userMessage.toLowerCase();
+                return exitTriggers.some(trigger => lowerMessage.includes(trigger));
+            }
+
+            async function submitLead() {
+                try {
+                    const leadPayload = {
+                        name: leadData.name,
+                        email: leadData.email,
+                        company: leadData.company || null,
+                        use_case: leadData.use_case || null,
+                        conversation_history: conversationHistory
+                    };
+
+                    console.log('Submitting lead:', leadPayload);
+
+                    const response = await fetch(config.leadEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(leadPayload)
+                    });
+
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        leadSubmitted = true;
+                        return data.response || "Perfect! I've connected you with our team. You should receive a confirmation email shortly, and our founders will reach out to schedule a meeting.";
+                    } else {
+                        throw new Error(data.error || 'Failed to submit lead');
+                    }
+                } catch (error) {
+                    console.error('Lead submission error:', error);
+                    return "Thanks for your interest! There was an issue submitting your information. Please email us directly at hello@memra.co";
+                }
+            }
+
+            async function handleLeadCollection(userMessage) {
+                // Extract name and email from user message
+                const extracted = extractNameAndEmail(userMessage);
+                
+                // Update lead data with any new information
+                if (extracted.name && !leadData.name) {
+                    leadData.name = extracted.name;
+                }
+                if (extracted.email && !leadData.email) {
+                    leadData.email = extracted.email;
+                }
+
+                // Check if we have both name and email
+                if (leadData.name && leadData.email) {
+                    // Submit the lead
+                    isCollectingLead = false;
+                    const result = await submitLead();
+                    // Reset lead data
+                    leadData = {};
+                    return result;
+                } else {
+                    // Still missing information, prompt for what's needed
+                    const missing = [];
+                    if (!leadData.name) missing.push('name');
+                    if (!leadData.email) missing.push('email address');
+                    
+                    if (missing.length === 2) {
+                        return "I need both your name and email address to connect you with our team. Could you please provide both?";
+                    } else if (missing.length === 1) {
+                        return `Thanks! I also need your ${missing[0]} to complete the connection.`;
+                    }
+                }
+            }
+
+            async function generateResponse(userMessage) {
+                // Store conversation history
+                conversationHistory.push({ user: userMessage });
+
+                // Check if user wants to exit lead collection mode
+                if (isCollectingLead && shouldExitLeadCollection(userMessage)) {
+                    isCollectingLead = false;
+                    leadData = {};
+                    console.log('Exited lead collection mode - user wants to browse');
+                    return "No problem! I'm here to help you explore and learn about Memra. What would you like to know more about?";
+                }
+
+                // Handle lead collection flow
+                if (isCollectingLead) {
+                    const response = await handleLeadCollection(userMessage);
+                    conversationHistory.push({ bot: response });
+                    return response;
+                }
+
+                try {
+                    // Get stored session ID or use current one
+                    const currentSessionId = sessionId || getStoredSessionId();
+                    
+                    // Call your FastAPI backend for regular conversation
+                    const response = await fetch(config.apiEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: userMessage,
+                            session_id: currentSessionId // Send session ID
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const botResponse = data.response;
+                        conversationHistory.push({ bot: botResponse });
+                        
+                        // Store the session ID from response
+                        if (data.session_id) {
+                            sessionId = data.session_id;
+                            storeSessionId(data.session_id);
+                        }
+                        
+                        // Update conversation state from backend
+                        if (data.conversation_state) {
+                            conversationState = data.conversation_state;
+                        }
+                        
+                        // Check if the bot response indicates we should start collecting lead info
+                        if (!leadSubmitted && shouldStartLeadCollection(botResponse)) {
+                            isCollectingLead = true;
+                            leadData = {};
+                            console.log('Entered lead collection mode');
+                        }
+                        
+                        return botResponse;
+                    } else {
+                        throw new Error(data.error || 'Unknown error occurred');
+                    }
+                } catch (error) {
+                    console.error('API Error:', error);
+                    
+                    // Fallback response
+                    const fallbackResponse = "I apologize, but I'm having trouble connecting right now. Please try again or email us at hello@memra.co";
+                    conversationHistory.push({ bot: fallbackResponse });
+                    return fallbackResponse;
+                }
+            }
+
+            // Quick action handler (global function for onclick)
+            window.handleQuickAction = async function(action) {
+                // Hide quick actions after first use
+                const quickActions = document.getElementById('quick-actions');
+                if (quickActions) {
+                    quickActions.style.display = 'none';
+                }
+
+                // Simulate user clicking the action
+                const userMessage = createMessage(action, 'user');
+                messages.appendChild(userMessage);
+                scrollToBottom();
+
+                // Show typing indicator
+                showTypingIndicator();
+                
+                // Disable input
+                input.disabled = true;
+                sendButton.disabled = true;
+
+                try {
+                    const response = await generateResponse(action);
+                    
+                    hideTypingIndicator();
+                    
+                    const botMessage = createMessage(response, 'bot');
+                    messages.appendChild(botMessage);
+                    scrollToBottom();
+                } catch (error) {
+                    hideTypingIndicator();
+                    
+                    const errorMessage = createMessage(
+                        "I apologize, but I'm having trouble responding right now. Please try again.",
+                        'bot'
+                    );
+                    messages.appendChild(errorMessage);
+                    scrollToBottom();
+                } finally {
+                    // Re-enable input
+                    input.disabled = false;
+                    sendButton.disabled = false;
+                    input.focus();
+                }
+            };
+
+            async function handleSubmit(e) {
+                e.preventDefault();
+                
+                const message = input.value.trim();
+                if (!message || isTyping) return;
+
+                // Hide quick actions after first user message
+                const quickActions = document.getElementById('quick-actions');
+                if (quickActions) {
+                    quickActions.style.display = 'none';
+                }
+
+                // Add user message
+                const userMessage = createMessage(message, 'user');
+                messages.appendChild(userMessage);
+                input.value = '';
+                scrollToBottom();
+
+                // Show typing indicator
+                showTypingIndicator();
+                
+                // Disable input
+                input.disabled = true;
+                sendButton.disabled = true;
+
+                try {
+                    const response = await generateResponse(message);
+                    
+                    hideTypingIndicator();
+                    
+                    const botMessage = createMessage(response, 'bot');
+                    messages.appendChild(botMessage);
+                    scrollToBottom();
+                } catch (error) {
+                    hideTypingIndicator();
+                    
+                    const errorMessage = createMessage(
+                        "I apologize, but I'm having trouble responding right now. Please try again.",
+                        'bot'
+                    );
+                    messages.appendChild(errorMessage);
+                    scrollToBottom();
+                } finally {
+                    // Re-enable input
+                    input.disabled = false;
+                    sendButton.disabled = false;
+                    input.focus();
+                }
+            }
+
+            // Event listeners
+            button.addEventListener('click', openChat);
+            closeButton.addEventListener('click', closeChat);
+            newConversationButton.addEventListener('click', function() {
+                startNewConversation();
+                // Clear messages and show welcome message
+                messages.innerHTML = `
+                    <div class="message bot">
+                        <div class="message-avatar">
+                            <span class="memra-logo-small">m</span>
+                        </div>
+                        <div class="message-content">
+                            Hi there! 👋 I'm your AI assistant. I can help you learn about Memra's digital employees, pricing, and use cases. How can I help you today?
+                        </div>
+                    </div>
+                    
+                    <!-- Quick action buttons -->
+                    <div class="quick-actions" id="quick-actions">
+                        <button class="quick-action-btn" onclick="handleQuickAction('pricing')">
+                            💰 Pricing Info
+                        </button>
+                        <button class="quick-action-btn" onclick="handleQuickAction('demo')">
+                            🚀 Schedule Demo
+                        </button>
+                        <button class="quick-action-btn" onclick="handleQuickAction('use cases')">
+                            📋 Use Cases
+                        </button>
+                    </div>
+                `;
+            });
+            backdrop.addEventListener('click', closeChat);
+            form.addEventListener('submit', handleSubmit);
+
+            // Input validation
+            input.addEventListener('input', function() {
+                sendButton.disabled = !input.value.trim() || isTyping;
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && isOpen) {
+                    closeChat();
+                }
+            });
+
+            // Initialize
+            sendButton.disabled = true;
+        })();
+    </script>
+</body>
+</html> 
