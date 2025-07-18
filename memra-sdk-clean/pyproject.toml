@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memra"
+version = "0.2.15"
+description = "Declarative framework for enterprise workflows with MCP integration - Client SDK"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Memra", email = "support@memra.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "pydantic>=1.8.0",
+    "httpx>=0.24.0",
+    "typing-extensions>=4.0.0",
+    "aiohttp>=3.8.0",
+    "aiohttp-cors>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-asyncio",
+    "black",
+    "flake8",
+]
+mcp = [
+    "psycopg2-binary>=2.9.0",
+]
+
+[project.urls]
+Homepage = "https://memra.co"
+Repository = "https://github.com/memra-platform/memra-sdk"
+
+[project.scripts]
+memra = "memra.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["memra", "memra.*"]
+
+[tool.setuptools.package-data]
+memra = [
+    "demos/etl_invoice_processing/*.py",
+    "demos/etl_invoice_processing/data/*",
+    "demos/etl_invoice_processing/data/invoices/*.PDF",
+] 
