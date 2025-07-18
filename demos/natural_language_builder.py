@@ -308,7 +308,7 @@ class ConversationalLLM:
     """LLM for conversational responses"""
     
     def __init__(self):
-        self.fireworks_api_key = os.getenv("FIREWORKS_API_KEY", "fw_3Zb13yks5hGB25Xi9d6ia69K")
+        self.fireworks_api_key = os.getenv("FIREWORKS_API_KEY", "")
         self.hf_api_key = os.getenv("HUGGINGFACE_API_KEY", "")
         self.hf_model = os.getenv("HUGGINGFACE_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
         self.client = None
