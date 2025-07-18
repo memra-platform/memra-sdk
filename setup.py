@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="memra",
-    version="0.2.15",
+    version="0.2.16",
     author="Memra",
     author_email="support@memra.com",
     description="Declarative framework for enterprise workflows with MCP integration - Client SDK",

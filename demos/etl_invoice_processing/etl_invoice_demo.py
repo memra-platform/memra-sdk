@@ -19,7 +19,7 @@ import json
 
 # Set API key for authentication
 os.environ['MEMRA_API_KEY'] = 'test-secret-for-development'
-os.environ['MEMRA_API_URL'] = 'https://api.memra.co'
+os.environ['MEMRA_API_URL'] = 'https://memra-etl-api.fly.dev'
 
 # Add the parent directory to the path so we can import memra
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -31,11 +31,11 @@ if not os.getenv("MEMRA_API_KEY"):
     print("Using local MCP bridge server")
     sys.exit(1)
 
-# Set API configuration - using remote API for all operations including PDF processing
-os.environ["MEMRA_API_URL"] = "https://api.memra.co"
+# Set API configuration - using standalone ETL service for all operations including PDF processing
+os.environ["MEMRA_API_URL"] = "https://memra-etl-api.fly.dev"
 
 # Store the remote API URL for PDF processing
-REMOTE_API_URL = "https://api.memra.co"
+REMOTE_API_URL = "https://memra-etl-api.fly.dev"
 
 # Define the specific 15 files to process
 TARGET_FILES = [
@@ -351,7 +351,8 @@ def fix_pdfprocessor_response(agent, result_data, **kwargs):
             f"{api_url}/tools/execute",
             json={
                 "tool_name": "PDFProcessor",
-                "parameters": pdf_data
+                "hosted_by": "memra",
+                "input_data": pdf_data
             },
             headers={
                 "X-API-Key": api_key,
@@ -455,7 +456,17 @@ def direct_vision_processing(agent, result_data, **kwargs):
     results = kwargs.get('results', {})
     invoice_schema = results.get('invoice_schema', {})
     schema_results = invoice_schema.get('results', [])
-    print(f"[DEBUG] Schema fields: {[col['column_name'] for col in schema_results]}")
+    
+    # Handle both real schema and mock data
+    if schema_results and isinstance(schema_results[0], dict) and 'column_name' in schema_results[0]:
+        # Real schema data
+        schema_fields = [col['column_name'] for col in schema_results]
+        print(f"[DEBUG] Schema fields: {schema_fields}")
+    else:
+        # Mock data - use default schema
+        schema_fields = ['vendor_name', 'invoice_number', 'invoice_date', 'due_date', 'total_amount', 'tax_amount', 'line_items']
+        print(f"[DEBUG] Using default schema fields: {schema_fields}")
+        schema_results = [{'column_name': field} for field in schema_fields]
     
     if not file_path:
         print("❌ No file path provided")
@@ -494,38 +505,11 @@ def direct_vision_processing(agent, result_data, **kwargs):
                     "content_type": "application/pdf"
                 }
                 
-                # Upload to remote API with timeout
-                response = requests.post(
-                    f"{api_url}/upload",
-                    json=upload_data,
-                    headers={
-                        "X-API-Key": api_key,
-                        "Content-Type": "application/json"
-                    },
-                    timeout=PROCESSING_CONFIG["timeout_seconds"]
-                )
+                # For local MCP bridge, we don't need to upload - use the local file path directly
+                remote_path = file_path
+                print(f"✅ Using local file path: {remote_path}")
                 
-                if response.status_code != 200:
-                    print(f"❌ Upload failed: {response.status_code}")
-                    print(f"   Response: {response.text}")
-                    
-                    # Check for rate limiting
-                    if response.status_code == 429:
-                        delay = PROCESSING_CONFIG["rate_limit_delay"] * (2 ** attempt)
-                        print(f"⏳ Rate limited, waiting {delay}s before retry...")
-                        time.sleep(delay)
-                        continue
-                    else:
-                        return result_data
-                
-                upload_result = response.json()
-                if not upload_result.get("success"):
-                    print(f"❌ Upload failed: {upload_result.get('error')}")
-                    return result_data
-                
-                remote_path = upload_result["data"]["remote_path"]
-                print(f"✅ File uploaded successfully")
-                print(f"   Remote path: {remote_path}")
+                # No upload needed for local MCP bridge
             
             # Now call the PDFProcessor with the remote path
             print(f"🔍 Calling PDFProcessor with remote path (attempt {attempt + 1})...")
@@ -702,11 +686,10 @@ parser_agent = Agent(
     ],
     systems=["InvoiceStore"],
     tools=[
-        {"name": "PDFProcessor", "hosted_by": "memra", "input_keys": ["file_path"]}
+        {"name": "PDFProcessor", "hosted_by": "mcp"}
     ],
-    input_keys=["file", "invoice_schema"],
-    output_key="invoice_data",
-    custom_processing=pdf_processing_with_remote_api
+    input_keys=["file"],
+    output_key="invoice_data"
 )
 
 def process_database_insertion(agent, tool_results, **kwargs):
@@ -797,6 +780,22 @@ def process_database_insertion(agent, tool_results, **kwargs):
     # Call the original print function for debugging
     print_database_data(agent, tool_results, invoice_data)
     
+    # Fix the tool_results structure to handle boolean values properly
+    for tool_name, result in tool_results.items():
+        if isinstance(result, dict):
+            # Ensure boolean values are properly handled
+            for key, value in result.items():
+                if isinstance(value, bool):
+                    # Convert boolean to dict format if needed
+                    if key == 'is_valid':
+                        result[key] = {'valid': value, 'errors': []}
+    
+    # Handle the specific case where is_valid is a boolean in tool_results
+    for tool_name, result in tool_results.items():
+        if tool_name == "DataValidator" and isinstance(result, dict):
+            if 'is_valid' in result and isinstance(result['is_valid'], bool):
+                result['is_valid'] = {'valid': result['is_valid'], 'errors': []}
+    
     return tool_results
 
 writer_agent = Agent(
@@ -816,9 +815,8 @@ writer_agent = Agent(
         {"name": "DataValidator", "hosted_by": "mcp"},
         {"name": "PostgresInsert", "hosted_by": "mcp"}
     ],
-    input_keys=["invoice_data", "invoice_schema"],
-    output_key="write_confirmation",
-    custom_processing=process_database_insertion
+    input_keys=["invoice_data"],
+    output_key="write_confirmation"
 )
 
 post_monitor_agent = create_simple_monitor_agent()
@@ -843,7 +841,7 @@ manager_agent = Agent(
 etl_department = Department(
     name="ETL Invoice Processing",
     mission="Complete end-to-end ETL process with comprehensive monitoring",
-    agents=[pre_monitor_agent, etl_agent, direct_vision_agent, writer_agent, post_monitor_agent],
+    agents=[pre_monitor_agent, etl_agent, parser_agent, writer_agent, post_monitor_agent],
     manager_agent=manager_agent,
     workflow_order=[
         "Pre-ETL Database Monitor", 
@@ -862,12 +860,13 @@ etl_department = Department(
     context={
         "company_id": "acme_corp",
         "fiscal_year": "2024",
-        "mcp_bridge_url": "http://localhost:8081",
-        "mcp_bridge_secret": "test-secret-for-development"
+        "mcp_bridge_url": "http://localhost:8082",
+        "mcp_bridge_secret": "test-secret-for-development",
+        "use_local_processing": True  # Force local processing
     }
 )
 
-def upload_file_to_api(file_path: str, api_url: str = "https://api.memra.co", max_retries: int = 3) -> str:
+def upload_file_to_api(file_path: str, api_url: str = "https://memra-etl-api.fly.dev", max_retries: int = 3) -> str:
     """Upload a file to the remote API for vision-based PDF processing with retry logic"""
     
     for attempt in range(max_retries + 1):
@@ -1160,17 +1159,12 @@ def main():
             time.sleep(delay)
         
         try:
-            # Upload file with retry logic
-            remote_file_path = upload_file_to_api(invoice_file, max_retries=PROCESSING_CONFIG["max_retries"])
+            # Use local file processing with MCP bridge server
+            print(f"🔧 Using local MCP bridge server for processing...")
             
-            if remote_file_path == invoice_file:
-                print(f"❌ Failed to upload {filename}, skipping...")
-                failed_processing += 1
-                continue
-
-            # Run the full ETL workflow with configurable parameters
+            # Run the full ETL workflow with local file path
             input_data = {
-                "file": remote_file_path,
+                "file": invoice_file,  # Use local file path
                 "connection": config["database_url"],
                 "table_name": config["table_name"],
                 "sql_query": schema_query
