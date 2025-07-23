@@ -167,11 +167,11 @@ import sys
 import time
 
 def main():
-    print("🚀 Starting ETL Invoice Processing Demo...")
-    print("🏢 Starting ETL Invoice Processing Department")
-    print("📋 Mission: Complete end-to-end ETL process with comprehensive monitoring")
-    print("👥 Team: Pre-ETL Database Monitor, Data Engineer, Invoice Parser, Data Entry Specialist, Post-ETL Database Monitor")
-    print("👔 Manager: ETL Process Manager")
+    print("<-> Starting ETL Invoice Processing Demo...")
+    print("<-> Starting ETL Invoice Processing Department")
+    print("<-> Mission: Complete end-to-end ETL process with comprehensive monitoring")
+    print("<-> Team: Pre-ETL Database Monitor, Data Engineer, Invoice Parser, Data Entry Specialist, Post-ETL Database Monitor")
+    print("<-> Manager: ETL Process Manager")
     
     steps = [
         ("Pre-ETL Database Monitor", "Database state captured: 2 rows"),
@@ -182,13 +182,13 @@ def main():
     ]
     
     for i, (step, result) in enumerate(steps, 1):
-        print(f"\\n🔄 Step {i}/5: {step}")
+        print(f"\\n<-> Step {i}/5: {step}")
         time.sleep(1)
-        print(f"✅ {result}")
+        print(f"<-> {result}")
     
-    print("\\n🎉 ETL Invoice Processing Department workflow completed!")
-    print("⏱️  Total time: 5.2s")
-    print("\\n📊 Demo completed successfully!")
+    print("\\n<-> ETL Invoice Processing Department workflow completed!")
+    print("<->  Total time: 5.2s")
+    print("\\n<-> Demo completed successfully!")
     print("This was a simplified demo. For the full experience, check out the complete ETL workflow.")
 
 if __name__ == "__main__":
