@@ -11,15 +11,17 @@ import random
 from pathlib import Path
 from memra import Agent, Department, LLM, check_api_health, get_api_status
 from memra.execution import ExecutionEngine, ExecutionTrace
-from database_monitor_agent import create_simple_monitor_agent, get_monitoring_queries
+from memra.demos.etl_invoice_processing.database_monitor_agent import create_simple_monitor_agent, get_monitoring_queries
 import glob
 import requests
 import base64
 import json
 
-# Set API key for authentication
-os.environ['MEMRA_API_KEY'] = 'test-secret-for-development'
-os.environ['MEMRA_API_URL'] = 'https://api.memra.co'
+# Set API key for authentication - use environment variable if set, otherwise use development key
+if not os.getenv('MEMRA_API_KEY'):
+    os.environ['MEMRA_API_KEY'] = 'test-secret-for-development'
+if not os.getenv('MEMRA_API_URL'):
+    os.environ['MEMRA_API_URL'] = 'https://api.memra.co'
 
 # Add the parent directory to the path so we can import memra
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

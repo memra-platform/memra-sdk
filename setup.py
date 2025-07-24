@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="memra",
-    version="0.2.18",
+    version="0.2.25",
     author="Memra",
     author_email="support@memra.com",
     description="Declarative framework for enterprise workflows with MCP integration - Client SDK",
@@ -19,6 +19,7 @@ setup(
             'demos/etl_invoice_processing/*.py',
             'demos/etl_invoice_processing/data/*',
             'demos/etl_invoice_processing/data/invoices/*.PDF',
+            'mcp_bridge_server.py',
         ],
     },
     classifiers=[
@@ -39,6 +40,11 @@ setup(
         "typing-extensions>=4.0.0",
         "aiohttp>=3.8.0",
         "aiohttp-cors>=0.7.0",
+        "requests>=2.25.0",
+        "huggingface-hub>=0.16.0",
+        "PyMuPDF>=1.21.0",
+        "python-dotenv>=0.19.0",
+        "psycopg2-binary>=2.9.0",
     ],
     extras_require={
         "dev": [
