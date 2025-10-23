@@ -1,0 +1,108 @@
+name: Pre-Meeting Resume Sender
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    # Run every 2 hours
+    - cron: '0 */2 * * *'
+
+concurrency:
+  group: pre-meeting-resume-sender
+  cancel-in-progress: false  # Don't cancel if already running
+
+jobs:
+  send-resumes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FLY_ACCESS_TOKEN: ${{ secrets.FLY_ACCESS_TOKEN }}
+      APP: memra-hubspot-agent-api
+      FLYCTL_NO_AGENT: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      - name: Wake app (HTTP)
+        run: |
+          curl -sS "https://${APP}.fly.dev/" >/dev/null || true
+          echo "✅ Wake request sent"
+
+      - name: Wait for app readiness (HTTP)
+        run: |
+          set -Eeuo pipefail
+          for i in {1..30}; do
+            if curl -fsS "https://${APP}.fly.dev/" >/dev/null; then
+              echo "✅ App HTTP ready"; exit 0
+            fi
+            sleep 4
+          done
+          echo "❌ App not HTTP-ready"; exit 1
+
+      - name: Ensure machine is started
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          # Install jq if needed
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y jq
+          fi
+
+          # Get a running machine or start one
+          MID=$(flyctl machines list -a "$APP" --json | jq -r '.[] | select(.state=="started") | .id' | head -n1 || true)
+          
+          if [ -z "${MID:-}" ]; then
+            echo "No running machine, starting one..."
+            MID=$(flyctl machines list -a "$APP" --json | jq -r '.[0].id' || true)
+            [ -n "${MID:-}" ] && flyctl machines start -a "$APP" "$MID"
+            
+            # Wait for machine to start
+            for i in {1..40}; do
+              state=$(flyctl machines list -a "$APP" --json | jq -r ".[] | select(.id==\"$MID\") | .state")
+              [ "$state" = "started" ] && break || sleep 3
+            done
+          fi
+          
+          echo "MACHINE_ID=$MID" >> $GITHUB_ENV
+          echo "✅ Using machine: $MID"
+
+      - name: Run Pre-Meeting Resume Sender
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "📧 Running Pre-Meeting Resume Sender..."
+          
+          REMOTE_CMD='bash -lc "
+            set -Eeuo pipefail
+            cd /app/hubspot-agent-2
+            echo \"📂 Working directory: \$(pwd)\"
+            echo \"📝 Running pre_meeting_resume_sender.py...\"
+            
+            # Run the script with production mode (DRY_RUN=false)
+            PYTHONPATH=/app/hubspot-agent-2 python3 tools/pre_meeting_resume_sender.py
+            
+            EXIT_CODE=\$?
+            if [ \$EXIT_CODE -eq 0 ]; then
+              echo \"✅ Pre-meeting resume sender completed successfully\"
+            else
+              echo \"❌ Pre-meeting resume sender failed with exit code \$EXIT_CODE\"
+              exit \$EXIT_CODE
+            fi
+          "'
+          
+          flyctl -t "$FLY_ACCESS_TOKEN" ssh console --pty -a "$APP" --machine "$MACHINE_ID" --command "$REMOTE_CMD"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "📊 Pre-Meeting Resume Sender workflow completed"
+          echo "   - Checked for Ding-Booked labels"
+          echo "   - Verified recruiters (HubSpot + OSS model)"
+          echo "   - Sent resumes to confirmed recruiters"
+          echo "   - Applied Ding-Sent-Resume labels"
+
