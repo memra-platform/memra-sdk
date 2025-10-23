@@ -3,7 +3,7 @@ name: HubSpot Delta Sync (Fast Updates)
 on:
   workflow_dispatch:  # Manual trigger
   schedule:
-    - cron: '0 9-17/2 * * 1-5'  # Every 2 hours, 09–17 UTC, Mon–Fri
+    #- cron: '0 9-17/2 * * 1-5'  # Every 2 hours, 09–17 UTC, Mon–Fri
 
 concurrency:
   group: hubspot-delta-sync      # keep distinct so this runs independently
